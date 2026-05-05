@@ -1,6 +1,6 @@
+import ctypes
 import os
 import sys
-import ctypes
 
 
 def optimize_system():

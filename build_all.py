@@ -1,8 +1,7 @@
 import os
-import sys
-import subprocess
-
 import shutil
+import subprocess
+import sys
 
 # 1. --- DANG KIEM TRA MOI TRUONG ---
 print("[*] Dang kiem tra moi truong: Python, Nuitka, GCC...")

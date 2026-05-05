@@ -1,18 +1,13 @@
-import sys
 import os
+import sys
+import time
+
 import cv2
 import mss
-import time
 import numpy as np
-from PyQt6.QtWidgets import (
-    QApplication,
-    QWidget,
-    QRubberBand,
-    QPushButton,
-    QVBoxLayout,
-    QLabel,
-)
-from PyQt6.QtCore import Qt, QRect, QSize, QPoint, QTimer
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer
+from PyQt6.QtWidgets import (QApplication, QLabel, QPushButton, QRubberBand,
+                             QVBoxLayout, QWidget)
 
 
 # Vẽ vùng chọn crop trực tiếp trên ảnh màn hình

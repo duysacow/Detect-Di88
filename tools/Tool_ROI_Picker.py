@@ -1,8 +1,9 @@
+import os
+import time
+
 import cv2
 import mss
 import numpy as np
-import os
-import time
 
 
 def select_roi_interactive():

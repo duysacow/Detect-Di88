@@ -1,10 +1,10 @@
 import importlib
 import re
-from .base_recoil_data import BaseRecoilData
 from pathlib import Path
 
 # Pre-load data once
 from . import base_recoil_data as BaseRecoilDataModule
+from .base_recoil_data import BaseRecoilData
 
 
 # Quản lý đọc và tra cứu cấu hình recoil

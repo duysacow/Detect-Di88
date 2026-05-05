@@ -1,7 +1,8 @@
-import win32api
-import win32con
 import time
 from threading import Thread
+
+import win32api
+import win32con
 
 
 # Thực thi kéo tâm theo pattern recoil hiện tại

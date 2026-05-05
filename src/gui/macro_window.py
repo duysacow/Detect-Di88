@@ -1,46 +1,24 @@
-from PyQt6.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QWidget,
-    QLabel,
-    QVBoxLayout,
-    QHBoxLayout,
-    QPushButton,
-    QFrame,
-    QGridLayout,
-    QGroupBox,
-    QComboBox,
-    QGraphicsDropShadowEffect,
-    QMessageBox,
-    QSystemTrayIcon,
-    QMenu,
-)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QPoint, QSize, QEvent
-from PyQt6.QtGui import (
-    QColor,
-    QFont,
-    QIcon,
-    QPainter,
-    QPen,
-    QBrush,
-    QKeySequence,
-    QPixmap,
-)
-import win32api
-import sys
 import os
+import sys
 
-# IMPORT LOCAL COMPONENTS
-from src.gui.game_overlay import GameOverlay
-
-from src.gui.crosshair_overlay import CrosshairOverlay
+import win32api
+from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtGui import (QBrush, QColor, QFont, QIcon, QKeySequence, QPainter,
+                         QPen, QPixmap)
+from PyQt6.QtWidgets import (QApplication, QComboBox, QFrame,
+                             QGraphicsDropShadowEffect, QGridLayout, QGroupBox,
+                             QHBoxLayout, QLabel, QMainWindow, QMenu,
+                             QMessageBox, QPushButton, QSystemTrayIcon,
+                             QVBoxLayout, QWidget)
 
 from src.core.path_utils import get_resource_path
 from src.core.settings import SettingsManager
-
+from src.gui.crosshair_overlay import CrosshairOverlay
+# IMPORT LOCAL COMPONENTS
+from src.gui.game_overlay import GameOverlay
 # IMPORT HELPERS & MANAGERS (STEP 6)
 from src.gui.tray_manager import TrayManager
-from src.gui.ui_utils import create_panel, add_setting_row, create_data_row
+from src.gui.ui_utils import add_setting_row, create_data_row, create_panel
 
 
 # Quản lý cửa sổ giao diện chính của macro

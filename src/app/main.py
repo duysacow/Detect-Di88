@@ -1,9 +1,10 @@
-import sys
-import os
-import time
 import ctypes
+import os
 import subprocess
+import sys
+import time
 from pathlib import Path
+
 import win32api
 import win32gui
 
@@ -93,9 +94,9 @@ if __name__ == "__main__":
     # print_banner()
     # print(" > [SYSTEM] Initializing environment...")
 
-    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtCore import QObject, QThread, pyqtSignal
     from PyQt6.QtGui import QIcon
-    from PyQt6.QtCore import QThread, pyqtSignal, QObject
+    from PyQt6.QtWidgets import QApplication
 
     from src.core.backend import BackendThread
     from src.core.high_precision_timer import HighPrecisionTimer

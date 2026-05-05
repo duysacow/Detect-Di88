@@ -1,7 +1,8 @@
 import ctypes
 from ctypes import wintypes
-from PyQt6.QtWidgets import QWidget, QLabel, QFrame, QApplication
+
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtWidgets import QApplication, QFrame, QLabel, QWidget
 
 # --- KHAI BÁO WIN32 API CHUẨN (FIX LỖI 0) ---
 user32 = ctypes.windll.user32

@@ -1,24 +1,13 @@
-import sys
-import os
 import json
+import os
 import subprocess
-from PyQt6.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QListWidget,
-    QGroupBox,
-    QFormLayout,
-    QScrollArea,
-    QMessageBox,
-    QSplitter,
-)
+import sys
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QApplication, QFormLayout, QGroupBox, QHBoxLayout,
+                             QLabel, QLineEdit, QListWidget, QMainWindow,
+                             QMessageBox, QPushButton, QScrollArea, QSplitter,
+                             QVBoxLayout, QWidget)
 
 # Tự động tìm thư mục gốc của dự án (Project Root)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

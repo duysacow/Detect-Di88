@@ -1,5 +1,6 @@
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QFrame
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton,
+                             QVBoxLayout)
 
 
 def create_panel(title, color_hex, obj_name):

@@ -1,5 +1,6 @@
-from PyQt6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
-from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+
 from src.core.path_utils import get_resource_path
 
 

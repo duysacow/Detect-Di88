@@ -1,7 +1,8 @@
-from pynput import keyboard
-from PyQt6.QtCore import QObject, pyqtSignal
 import threading
 import time
+
+from pynput import keyboard
+from PyQt6.QtCore import QObject, pyqtSignal
 
 # Bộ lưu trữ toàn cục Tracking Physical Keys (Được quản lý tự động bởi Pynput, bỏ qua SendInput)
 PHYSICAL_KEYS = set()

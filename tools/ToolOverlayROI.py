@@ -1,16 +1,10 @@
-import sys
 import os
-from PyQt6.QtWidgets import (
-    QApplication,
-    QWidget,
-    QFrame,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
-    QHBoxLayout,
-)
-from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QTimer
+import sys
+
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QPalette
+from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
+                             QPushButton, QVBoxLayout, QWidget)
 
 # Thêm thư mục gốc vào path để import
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

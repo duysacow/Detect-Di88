@@ -1,8 +1,9 @@
-from PyQt6.QtWidgets import QWidget, QApplication
-from PyQt6.QtCore import Qt, QTimer, QPoint
-from PyQt6.QtGui import QColor, QPainter, QPen, QBrush
-import win32api
 import ctypes
+
+import win32api
+from PyQt6.QtCore import QPoint, Qt, QTimer
+from PyQt6.QtGui import QBrush, QColor, QPainter, QPen
+from PyQt6.QtWidgets import QApplication, QWidget
 
 
 # Hiển thị tâm ảo nổi trên màn hình

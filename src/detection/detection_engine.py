@@ -1,6 +1,8 @@
-import cv2
 import os
+
+import cv2
 import numpy as np
+
 from src.core.path_utils import get_resource_path
 
 

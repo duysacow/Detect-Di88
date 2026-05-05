@@ -1,6 +1,6 @@
 import json
-from pathlib import Path
 import threading
+from pathlib import Path
 
 
 # Quản lý đọc ghi cài đặt ứng dụng

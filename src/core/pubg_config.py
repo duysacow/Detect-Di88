@@ -1,6 +1,6 @@
+import hashlib
 import os
 import re
-import hashlib
 
 
 # Đọc và theo dõi cấu hình độ nhạy của PUBG
