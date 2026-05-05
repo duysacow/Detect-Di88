@@ -1,3 +1,4 @@
+import ctypes
 import os
 
 import cv2
@@ -8,12 +9,19 @@ from src.core.path_utils import get_resource_path
 
 # Nhận diện súng, phụ kiện và trạng thái từ ảnh chụp
 class DetectionEngine:
-    def __init__(self, template_folder="FullHD"):
+    def __init__(self, template_folder=None, screen_width=None, screen_height=None):
         """
         Khởi tạo hệ thống và nạp sẵn toàn bộ mẫu ảnh vào RAM (Súng, UI, Phụ kiện, Tay cầm, Scope, Tư thế).
         """
         self.base_dir = get_resource_path("")
-        self.template_dir = self._resolve_template_dir(template_folder)
+        self.screen_width, self.screen_height = self._resolve_screen_size(
+            screen_width, screen_height
+        )
+        self.template_folder = (
+            template_folder
+            or self._select_template_folder(self.screen_width, self.screen_height)
+        )
+        self.template_dir = self._resolve_template_dir(self.template_folder)
 
         # Kho lưu trữ tập trung để quản lý dễ dàng
         self.templates = {
@@ -33,8 +41,41 @@ class DetectionEngine:
 
         # BÁO CÁO TÓM TẮT (GỌN GÀNG)
         print(
+            " > [SYSTEM] Template Selection:"
+            f" screen_width={self.screen_width}"
+            f" screen_height={self.screen_height}"
+            f" selected_template_folder={self.template_folder}"
+        )
+        print(
             f" > [SYSTEM] Detection Engine: Loaded {total_count} templates (BGR Mode)"
         )
+
+    def _resolve_screen_size(self, screen_width, screen_height):
+        if screen_width is not None and screen_height is not None:
+            return int(screen_width), int(screen_height)
+
+        user32 = ctypes.windll.user32
+        return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+
+    def _select_template_folder(self, screen_width, screen_height):
+        if (screen_width == 1920 and screen_height == 1080) or (
+            screen_width <= 1920 and screen_height <= 1080
+        ):
+            return "1920x1080"
+
+        if (screen_width, screen_height) in {
+            (2560, 1440),
+            (3440, 1440),
+        } or screen_height >= 1440:
+            return "3440x1440"
+
+        fallback = "1920x1080"
+        print(
+            " > [WARNING] Template Selection:"
+            f" unmatched resolution {screen_width}x{screen_height},"
+            f" fallback to {fallback}"
+        )
+        return fallback
 
     def _resolve_template_dir(self, template_folder):
         candidates = [
@@ -42,21 +83,17 @@ class DetectionEngine:
             os.path.join(self.base_dir, "src", "Template", template_folder),
         ]
 
-        aliases = {
-            "FullHD": "1920x1080",
-            "2K": "3440x1440",
-        }
-        alias_folder = aliases.get(template_folder)
-        if alias_folder:
-            candidates.append(
-                os.path.join(self.base_dir, "src", "Template", alias_folder)
-            )
-
         for path in candidates:
             if os.path.exists(path):
                 return path
 
-        return candidates[0]
+        fallback_path = os.path.join(self.base_dir, "src", "Template", "1920x1080")
+        print(
+            " > [WARNING] Template Directory:"
+            f" folder '{template_folder}' not found,"
+            f" fallback path={fallback_path}"
+        )
+        return fallback_path
 
     def _load_category(self, category):
         """Hàm dùng chung để nạp toàn bộ ảnh từ một thư mục vào dictionary."""

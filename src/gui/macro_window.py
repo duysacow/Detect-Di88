@@ -758,17 +758,17 @@ class MacroWindow(QMainWindow):
         self.current_capture_mode = mode
 
     def cycle_ads_mode(self):
-        current = self.btn_ads_hide.text()
+        current = self.btn_adsmode.text().upper()
 
         # Simple toggle between 2 states
-        if "HOLD" in current:
-            new_mode = "ADS CLICK"
-            mode_val = "TOGGLE"
+        if current == "HOLD":
+            new_mode = "CLICK"
+            mode_val = "CLICK"
         else:
-            new_mode = "ADS HOLD"
+            new_mode = "HOLD"
             mode_val = "HOLD"
 
-        self.btn_ads_hide.setText(new_mode)
+        self.btn_adsmode.setText(new_mode)
         self.crosshair.set_ads_mode(mode_val)
         self.save_crosshair_settings()  # Auto-save
 
@@ -817,7 +817,7 @@ class MacroWindow(QMainWindow):
 
             # ADS Mode
             ads_mode = data.get("ads_mode", "HOLD")
-            self.btn_ads_hide.setText(f"ADS: {ads_mode}")
+            self.btn_adsmode.setText(ads_mode.upper())
             self.crosshair.set_ads_mode(ads_mode)
 
         except Exception as e:
@@ -892,9 +892,8 @@ class MacroWindow(QMainWindow):
                     "White": 6,
                 }
                 self.combo_color.setCurrentIndex(color_idx.get(color, 0))
-            if hasattr(self, "btn_ads_hide") and self.btn_ads_hide:
-                ads_cross = cr.get("ads_mode", "HOLD")
-                self.btn_ads_hide.setText(f"ADS: {ads_cross}")
+            ads_cross = cr.get("ads_mode", "HOLD")
+            self.btn_adsmode.setText(ads_cross.upper())
             if hasattr(self, "btn_cross_toggle") and self.btn_cross_toggle:
                 self.btn_cross_toggle.setChecked(cr.get("active", True))
             if hasattr(self, "crosshair") and self.crosshair:
@@ -986,11 +985,8 @@ class MacroWindow(QMainWindow):
 
     def update_ads_display(self, mode: str):
         """Cập nhật hiển thị ADS MODE từ PUBG config — không thể click"""
-        if hasattr(self, "btn_adsmode") and self.btn_adsmode:
-            self.btn_adsmode.setText(mode.upper())
+        self.btn_adsmode.setText(mode.upper())
         # Đồng bộ nút ADS trong crosshair section
-        if hasattr(self, "btn_ads_hide") and self.btn_ads_hide:
-            self.btn_ads_hide.setText(f"ADS: {mode.upper()}")
         # Đồng bộ crosshair overlay
         if hasattr(self, "crosshair") and self.crosshair:
             self.crosshair.set_ads_mode(mode.upper())
