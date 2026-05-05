@@ -1,15 +1,17 @@
 import ctypes
 import time
 
+
 # Ép hệ thống dùng timer độ chính xác cao khi app chạy
 class HighPrecisionTimer:
     """
     Enforces Windows Timer Resolution to 1ms (High Precision).
-    This ensures time.sleep() and other timing functions are accurate to ~1-2ms 
+    This ensures time.sleep() and other timing functions are accurate to ~1-2ms
     instead of the default ~15.6ms on Windows.
     """
+
     _instance = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(HighPrecisionTimer, cls).__new__(cls)

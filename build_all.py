@@ -18,8 +18,10 @@ onefile_work_dir = "MacroDi88.onefile-build"
 
 for d in [build_dir, build_work_dir, onefile_work_dir]:
     if os.path.exists(d):
-        try: shutil.rmtree(d)
-        except Exception: pass
+        try:
+            shutil.rmtree(d)
+        except Exception:
+            pass
 
 # 3. --- DANG DONG GOI AUTO DETECTOR DI88VP ---
 print("[*] Dang dong goi Auto Detector DI88VP...")
@@ -29,8 +31,8 @@ cmd = (
     "--standalone "
     "--onefile "
     # Tắt nén để né AV và tăng tốc build
-    "--onefile-no-compression " 
-    "--onefile-tempdir-spec=\"{TEMP}/DI88VP_{TIME}\" "
+    "--onefile-no-compression "
+    '--onefile-tempdir-spec="{TEMP}/DI88VP_{TIME}" '
     "--windows-console-mode=disable "
     "--remove-output "
     "--enable-plugin=pyqt6 "
@@ -38,14 +40,12 @@ cmd = (
     "--windows-uac-admin "
     "--mingw64 "
     "--lto=yes "
-    
-    "--company-name=\"DI88-VP ELITE\" "
-    "--product-name=\"DI88-VP PUBG MACRO\" "
+    '--company-name="DI88-VP ELITE" '
+    '--product-name="DI88-VP PUBG MACRO" '
     "--file-version=1.2.0.0 "
     "--product-version=1.2.0.0 "
-    "--file-description=\"Advanced Recoil Control Engine\" "
-    "--copyright=\"© 2026 DI88-VP Team. All rights reserved.\" "
-    
+    '--file-description="Advanced Recoil Control Engine" '
+    '--copyright="© 2026 DI88-VP Team. All rights reserved." '
     "--include-module=cv2 "
     "--include-module=numpy "
     "--include-module=psutil "
@@ -58,22 +58,18 @@ cmd = (
     "--include-module=win32event "
     "--include-module=ctypes "
     "--include-package=PyQt6 "
-
-    
     # --- DATA & ASSETS ---
     f"{'--include-data-dir=src/config=src/config ' if os.path.exists('src/config') else ''}"
     f"{'--include-data-dir=src/Template=src/Template ' if os.path.exists('src/Template') else ''}"
     f"{'--include-data-dir=src/gui=src/gui ' if os.path.exists('src/gui') else ''}"
     "--include-data-files=di88vp.ico=di88vp.ico "
-
-    
     "--include-package=src.core "
+    "--include-package=src.detection "
     "--include-package=src.gui "
-    "--include-package=src.detect "
-    
+    "--include-package=src.input "
+    "--include-package=src.recoil "
     "--output-dir=dist "
     "--output-filename=DI88VP.exe "
-    
     "src/app/main.py"
 )
 

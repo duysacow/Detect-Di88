@@ -1,9 +1,10 @@
 from pynput import mouse
 from PyQt6.QtCore import QObject, pyqtSignal
 
+
 # Lắng nghe và phát sự kiện click chuột
 class MouseListener(QObject):
-    signal_click = pyqtSignal(str, bool) # (button_name, pressed) 
+    signal_click = pyqtSignal(str, bool)  # (button_name, pressed)
     # button_name in ["left", "right", "middle", "x1", "x2"]
 
     def __init__(self):
@@ -13,9 +14,7 @@ class MouseListener(QObject):
 
     def start_listening(self):
         if not self.listener:
-            self.listener = mouse.Listener(
-                on_click=self.on_click
-            )
+            self.listener = mouse.Listener(on_click=self.on_click)
             self.listener.start()
             self.running = True
 
