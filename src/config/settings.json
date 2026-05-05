@@ -9,7 +9,10 @@
   "crosshair": {
     "active": true,
     "style": "1: Gap Cross",
-    "color_index": 1
+    "color": "Äá» Cam",
+    "color_index": 1,
+    "toggle_key": "home",
+    "ads_mode": "HOLD"
   },
   "stop_keys": [
     "x",

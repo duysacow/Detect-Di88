@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from queue import Full
 
 import win32api
 
@@ -81,16 +82,20 @@ class InputController:
                     and not self._fast_loot_busy.is_set()
                 ):
                     self._fast_loot_busy.set()
-                    self.command_queue.put(
-                        InputCommand(
-                            command_type="fast_loot",
-                            payload={
-                                "trigger_vk": self.fast_loot_vk,
-                                "busy_event": self._fast_loot_busy,
-                            },
-                            issued_at=time.perf_counter(),
+                    try:
+                        # Queue input bằng non-blocking put để poll loop không bị kẹt.
+                        self.command_queue.put_nowait(
+                            InputCommand(
+                                command_type="fast_loot",
+                                payload={
+                                    "trigger_vk": self.fast_loot_vk,
+                                    "busy_event": self._fast_loot_busy,
+                                },
+                                issued_at=time.perf_counter(),
+                            )
                         )
-                    )
+                    except Full:
+                        self._fast_loot_busy.clear()
 
             self._last_keys = current_keys
             time.sleep(0.01)

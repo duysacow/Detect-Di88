@@ -17,11 +17,13 @@ class DetectionEngine:
         self.screen_width, self.screen_height = self._resolve_screen_size(
             screen_width, screen_height
         )
-        self.template_folder = (
+        requested_template_folder = (
             template_folder
             or self._select_template_folder(self.screen_width, self.screen_height)
         )
-        self.template_dir = self._resolve_template_dir(self.template_folder)
+        self.template_folder, self.template_dir = self._resolve_template_dir(
+            requested_template_folder
+        )
 
         # Kho lưu trữ tập trung để quản lý dễ dàng
         self.templates = {
@@ -41,10 +43,8 @@ class DetectionEngine:
 
         # BÁO CÁO TÓM TẮT (GỌN GÀNG)
         print(
-            " > [SYSTEM] Template Selection:"
-            f" screen_width={self.screen_width}"
-            f" screen_height={self.screen_height}"
-            f" selected_template_folder={self.template_folder}"
+            f" > [SYSTEM] Template: {self.template_folder}"
+            f" ({self.screen_width}x{self.screen_height})"
         )
         print(
             f" > [SYSTEM] Detection Engine: Loaded {total_count} templates (BGR Mode)"
@@ -58,24 +58,10 @@ class DetectionEngine:
         return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
 
     def _select_template_folder(self, screen_width, screen_height):
-        if (screen_width == 1920 and screen_height == 1080) or (
-            screen_width <= 1920 and screen_height <= 1080
-        ):
-            return "1920x1080"
-
-        if (screen_width, screen_height) in {
-            (2560, 1440),
-            (3440, 1440),
-        } or screen_height >= 1440:
+        if screen_height >= 1440:
             return "3440x1440"
 
-        fallback = "1920x1080"
-        print(
-            " > [WARNING] Template Selection:"
-            f" unmatched resolution {screen_width}x{screen_height},"
-            f" fallback to {fallback}"
-        )
-        return fallback
+        return "1920x1080"
 
     def _resolve_template_dir(self, template_folder):
         candidates = [
@@ -85,15 +71,16 @@ class DetectionEngine:
 
         for path in candidates:
             if os.path.exists(path):
-                return path
+                return template_folder, path
 
+        fallback_folder = "1920x1080"
         fallback_path = os.path.join(self.base_dir, "src", "Template", "1920x1080")
         print(
             " > [WARNING] Template Directory:"
             f" folder '{template_folder}' not found,"
             f" fallback path={fallback_path}"
         )
-        return fallback_path
+        return fallback_folder, fallback_path
 
     def _load_category(self, category):
         """Hàm dùng chung để nạp toàn bộ ảnh từ một thư mục vào dictionary."""

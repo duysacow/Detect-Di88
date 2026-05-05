@@ -1,52 +1,1427 @@
-﻿from __future__ import annotations
+import sys
+import os
+import time
+import ctypes
+import subprocess
+import copy
+import json
+import threading
+import re
+import math
+import hashlib
+import concurrent.futures
+import zlib
+from pathlib import Path
+
+import cv2
+import numpy as np
+import psutil
+import ClassBaseRecoil as BaseRecoilDataModule
+import win32api
+import win32con
+import win32gui
+from pynput import keyboard, mouse
+try:
+    import mss
+except Exception:
+    mss = None
+try:
+    import dxcam
+except Exception:
+    dxcam = None
+
+try:
+    cv2.setNumThreads(1)
+    cv2.ocl.setUseOpenCL(False)
+except Exception:
+    pass
+
+from ctypes import wintypes
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QPoint, QSize, QEvent, QObject, QRectF
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen, QBrush, QKeySequence, QPixmap, QAction
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QLabel, QVBoxLayout, QHBoxLayout,
+    QPushButton, QFrame, QGridLayout, QGroupBox, QComboBox, QStackedWidget, QDialog, QSlider,
+    QGraphicsDropShadowEffect, QMessageBox, QSystemTrayIcon, QMenu
+)
+
+# TẮT TOÀN BỘ THÔNG BÁO RÁC CỦA QT VÀ HỆ THỐNG
+os.environ["QT_LOGGING_RULES"] = "*.debug=false;qt.qpa.*=false"
+os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+UI_ONLY_MODE = False
+
+
+class EngineCoreImageView(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(ctypes.c_uint8)),
+        ("width", ctypes.c_int),
+        ("height", ctypes.c_int),
+        ("channels", ctypes.c_int),
+        ("stride", ctypes.c_int),
+    ]
+
+
+class EngineCoreFastLootConfig(ctypes.Structure):
+    _fields_ = [
+        ("enabled", ctypes.c_int),
+        ("loot_key_vk", ctypes.c_ushort),
+        ("inventory_key_vk", ctypes.c_ushort),
+        ("screen_width", ctypes.c_int),
+        ("screen_height", ctypes.c_int),
+        ("source_x", ctypes.c_int),
+        ("source_y", ctypes.c_int),
+        ("source_row_step", ctypes.c_int),
+        ("target_x", ctypes.c_int),
+        ("target_y", ctypes.c_int),
+        ("sweep_count", ctypes.c_int),
+        ("inventory_open_delay_ms", ctypes.c_int),
+        ("post_drop_delay_ms", ctypes.c_int),
+        ("loop_delay_ms", ctypes.c_int),
+        ("require_game_window", ctypes.c_int),
+    ]
+
+
+class EngineCoreSlideConfig(ctypes.Structure):
+    _fields_ = [
+        ("enabled", ctypes.c_int),
+        ("trigger_vk", ctypes.c_ushort),
+        ("crouch_vk", ctypes.c_ushort),
+        ("shift_vk", ctypes.c_ushort),
+        ("shift_left_vk", ctypes.c_ushort),
+        ("shift_right_vk", ctypes.c_ushort),
+        ("forward_vk", ctypes.c_ushort),
+        ("left_vk", ctypes.c_ushort),
+        ("right_vk", ctypes.c_ushort),
+        ("cooldown_ms", ctypes.c_int),
+        ("release_to_crouch_delay_ms", ctypes.c_int),
+        ("first_crouch_release_delay_ms", ctypes.c_int),
+        ("crouch_repress_delay_ms", ctypes.c_int),
+        ("final_restore_delay_ms", ctypes.c_int),
+        ("trailing_cleanup_delay_ms", ctypes.c_int),
+        ("require_game_window", ctypes.c_int),
+    ]
+
+APP_STYLE_QSS = '/* MAIN WINDOW CONTAINER */\nQFrame#MainContainer {\n    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #252525, stop:1 #0f0f0f);\n    border-radius: 15px; \n    border: 1px solid #444;\n}\n\n/* TITLE BAR */\nQFrame#TitleBar {\n    background-color: transparent;\n    border: none;\n}\n\nQLabel#AppTitle {\n    color: qlineargradient(x1:0, y1:0.5, x2:1, y2:0.5, stop:0 #FFFFFF, stop:1 #A0A0A0);\n    background: transparent;\n    text-transform: uppercase;\n    font-size: 13px;\n    font-weight: bold;\n}\n\n/* WINDOW CONTROLS */\nQPushButton#MinBtn {\n    background: #333;\n    color: white;\n    border-radius: 10px;\n    font-weight: bold;\n    font-size: 10px;\n}\nQPushButton#MinBtn:hover {\n    background: #555;\n}\n\nQPushButton#CloseBtn {\n    background: #333;\n    color: #ff4444;\n    border-radius: 10px;\n    font-weight: bold;\n    font-size: 10px;\n}\nQPushButton#CloseBtn:hover {\n    background: #ff4444;\n    color: white;\n}\n\n/* PANELS (GUN 1, GUN 2) */\nQFrame.PanelFrame {\n    background-color: #1e1e1e;\n    border-radius: 10px;\n    border: 1px solid #333;\n}\n\nQLabel.PanelHeader {\n    font-size: 13px;\n    font-weight: 900;\n    letter-spacing: 2px;\n    background-color: rgba(0,0,0,0.2); \n    border-radius: 5px;\n    padding: 3px;\n}\n\n/* DATA ROWS (Name, Scope, etc.) */\nQLabel.RowLabel {\n    color: #888;\n    font-size: 11px;\n    font-weight: bold;\n}\n\nQLabel.ValueLabel {\n    color: #fff;\n    font-size: 11px;\n    font-weight: bold;\n    background-color: #252525;\n    padding: 2px 5px;\n    border-radius: 3px;\n}\n\n/* STATUS & INFO LABELS */\nQLabel#StanceLabel {\n    background-color: #2a2a2a;\n    color: #FFFF00;\n    font-size: 13px;\n    font-weight: bold;\n    border: 1px solid #444;\n    border-radius: 8px;\n}\n\nQLabel#DetectInfoLabel {\n    background-color: #2a2a2a;\n    color: #00FFFF;\n    font-size: 11px;\n    font-weight: bold;\n    border: 1px solid #444;\n    border-radius: 8px;\n}\n\n/* BUTTONS */\nQPushButton#MacroBtn {\n    border-radius: 8px;\n    font-weight: bold;\n    font-size: 14px;\n}\n\n/* SETTING ROWS */\nQLabel.SettingLabel {\n    background-color: #2a2a2a;\n    color: #bbb; \n    border: 1px solid #444;\n    border-radius: 4px;\n    padding: 2px;\n    font-size: 11px;\n    font-weight: bold;\n}\n\nQPushButton.SettingBtn {\n    background-color: #2a2a2a;\n    color: #ccc; \n    border: 1px solid #444;\n    border-radius: 4px;\n    font-size: 11px;\n}\nQPushButton.SettingBtn:hover {\n    border: 1px solid #666;\n    background-color: #333;\n}\n\n/* CAPTURE MODE BUTTONS */\nQPushButton.CaptureBtn {\n    background-color: #2a2a2a;\n    color: #888;\n    border: 1px solid #444;\n    border-radius: 4px;\n    font-size: 11px;\n    font-weight: bold;\n}\nQPushButton.CaptureBtn:hover {\n    background-color: #333;\n    border: 1px solid #555;\n}\nQPushButton.CaptureBtn[active="true"] {\n    background-color: #ff6b6b;\n    color: white;\n    border: 1px solid #ff5252;\n    font-weight: bold;\n}\n\n/* SPECIAL TOGGLE BUTTONS */\nQPushButton#OverlayToggleBtn[state="ON"], \nQPushButton#FastLootToggleBtn[state="ON"] {\n    background-color: #00FF00;\n    color: #000;\n    border: 2px solid #00AA00;\n    border-radius: 6px;\n    font-size: 12px;\n    font-weight: bold;\n}\nQPushButton#OverlayToggleBtn[state="OFF"], \nQPushButton#FastLootToggleBtn[state="OFF"] {\n    background-color: #666;\n    color: #ccc;\n    border: 2px solid #444;\n    border-radius: 6px;\n    font-size: 12px;\n    font-weight: bold;\n}\n\nQPushButton#CrosshairToggleBtn[checked="true"] {\n    background-color: #00FFFF;\n    color: #000;\n    border-radius: 4px;\n    font-size: 10px;\n    font-weight: bold;\n}\nQPushButton#CrosshairToggleBtn[checked="false"] {\n    background-color: #444;\n    color: #aaa;\n    border-radius: 4px;\n    font-size: 10px;\n    font-weight: bold;\n}\n\nQPushButton#AdsHideBtn {\n    background-color: #FF00FF;\n    color: #fff;\n    border-radius: 4px;\n    font-size: 10px;\n    font-weight: bold;\n}\n\n/* COMBO BOXES */\nQComboBox {\n    background-color: #2a2a2a;\n    color: white;\n    border: 1px solid #444;\n    border-radius: 4px;\n    font-size: 10px;\n    padding: 1px 5px;\n}\n\n/* FOOTER BUTTONS */\nQPushButton#DefaultBtn {\n    background-color: #333;\n    color: white;\n    border: none;\n    border-radius: 4px;\n    font-weight: bold;\n    font-size: 10px;\n}\nQPushButton#DefaultBtn:hover {\n    background-color: #444;\n}\n\nQPushButton#SaveBtn {\n    background-color: #ff6b6b;\n    color: white;\n    border: none;\n    border-radius: 4px;\n    font-weight: bold;\n    font-size: 10px;\n}\nQPushButton#SaveBtn:hover {\n    background-color: #ff5252;\n}\n\nQLabel#CrosshairSectionTitle {\n    color: #aaaaaa;\n    font-size: 11px;\n    font-weight: bold;\n    margin-top: 5px;\n    margin-bottom: 2px;\n}\n'
+
+
+def get_resource_path(relative_path):
+    """
+    Get the absolute path to a resource, works for dev and for Nuitka/PyInstaller.
+    """
+    if getattr(sys, 'frozen', False):
+        # Chế độ đóng gói: __file__ sẽ trỏ vào thư mục tạm mà Nuitka xả nén ra
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base_path, relative_path)
+    
+    # Chế độ phát triển (Local)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
+
+
+# ===== Utils.py =====
 
 import ctypes
 import os
 import sys
+import win32gui
+import win32process
+import psutil
+
+def is_admin():
+    """M? t? ?? ???c l?m s?ch."""
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+_is_game_active_cache = False
+_last_check_time = 0
+_last_hwnd = 0
+
+_last_game_hwnd = 0
+
+def get_game_hwnd():
+    """M? t? ?? ???c l?m s?ch."""
+    global _last_game_hwnd
+    import time
+    hwnd = win32gui.GetForegroundWindow()
+    if not hwnd: return _last_game_hwnd
+    
+    # Đã làm sạch chú thích lỗi mã hóa.
+    class_name = win32gui.GetClassName(hwnd)
+    title = win32gui.GetWindowText(hwnd)
+    if class_name == "UnrealWindow" and ("PUBG" in title or "PLAYERUNKNOWN" in title):
+        _last_game_hwnd = hwnd
+        return hwnd
+    return _last_game_hwnd  # Đã làm sạch chú thích lỗi mã hóa.
+
+def is_game_active():
+    """
+    Kiểm tra cực nhanh cửa sổ PUBG.
+    Loại bỏ psutil để tránh gây micro-stutter (khựng khung hình).
+    """
+    global _last_hwnd, _is_game_active_cache
+    try:
+        hwnd = win32gui.GetForegroundWindow()
+        if not hwnd: return False
+        
+        # Đã làm sạch chú thích lỗi mã hóa.
+        if hwnd == _last_hwnd: return _is_game_active_cache
+            
+        _last_hwnd = hwnd
+        class_name = win32gui.GetClassName(hwnd)
+        
+        # Đã làm sạch chú thích lỗi mã hóa.
+        if class_name == "UnrealWindow":
+            title = win32gui.GetWindowText(hwnd)
+            if "PUBG" in title or "PLAYERUNKNOWN" in title:
+                _is_game_active_cache = True
+                return True
+        
+        _is_game_active_cache = False
+        return False
+    except:
+        return False
+
+
+def gui_key_to_vk(key_name: str) -> int:
+    key = str(key_name or "f1").strip().lower().replace(" ", "_")
+    mapping = {
+        "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73, "f5": 0x74, "f6": 0x75,
+        "f7": 0x76, "f8": 0x77, "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
+        "home": 0x24, "insert": 0x2D, "delete": 0x2E, "end": 0x23,
+        "shift": 0x10, "shift_l": 0xA0, "shift_r": 0xA1,
+        "ctrl": 0x11, "ctrl_l": 0xA2, "ctrl_r": 0xA3,
+        "alt": 0x12, "alt_l": 0xA4, "alt_r": 0xA5,
+        "space": 0x20, "tab": 0x09, "esc": 0x1B, "escape": 0x1B,
+        "caps_lock": 0x14, "capslock": 0x14,
+        "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28,
+        "comma": 0xBC,
+    }
+    if key in mapping:
+        return mapping[key]
+    if len(key) == 1:
+        return ord(key.upper())
+    return 0x70
+
+
+def set_high_dpi():
+    """M? t? ?? ???c l?m s?ch."""
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+def get_app_path():
+    """M? t? ?? ???c l?m s?ch."""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+# ===== ClassTimer.py =====
+
+import ctypes
+import time
+
+class HighPrecisionTimer:
+    """
+    Enforces Windows Timer Resolution to 1ms (High Precision).
+    This ensures time.sleep() and other timing functions are accurate to ~1-2ms 
+    instead of the default ~15.6ms on Windows.
+    """
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(HighPrecisionTimer, cls).__new__(cls)
+            cls._instance.initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if not self.initialized:
+            self.winmm = ctypes.windll.winmm
+            self.started = False
+            self.initialized = True
+
+    def start(self):
+        """Enable High Precision Timer (1ms)"""
+        if not self.started:
+            try:
+                # timeBeginPeriod(1) sets the minimum timer resolution to 1ms
+                self.winmm.timeBeginPeriod(1)
+                self.started = True
+                pass
+            except Exception as e:
+                pass
+
+    def stop(self):
+        """Disable High Precision Timer (Revert to System Default)"""
+        if self.started:
+            try:
+                self.winmm.timeEndPeriod(1)
+                self.started = False
+                pass
+            except Exception as e:
+                pass
+
+
+# ===== ClassSettings.py =====
+class SettingsManager:
+    """Manages application settings with persistent storage"""
+
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        if not hasattr(self, 'initialized'):
+            self.settings_file = Path(__file__).parent / "Config" / "settings.json"
+            self._cache = None
+            self.initialized = True
+
+    def _get_defaults(self):
+        return {
+            "keybinds": {
+                "gui_toggle": "f1"
+            },
+            "ads_mode": "HOLD",
+            "stop_keys": ["x", "g", "5"],
+            "fast_loot": True,
+            "fast_loot_key": "caps_lock",
+            "overlay_key": "delete",
+            "slide_trick": True,
+            "crosshair": {
+                "active": True,
+                "style": "1: Gap Cross",
+                "color": "Red",
+                "ads_mode": "HOLD"
+            },
+            "capture_mode": "DXGI"
+        }
+
+    def load(self):
+        if self._cache is not None:
+            return self._cache
+
+        if not self.settings_file.exists():
+            defaults = self._get_defaults()
+            self.save(defaults)
+            self._cache = defaults
+            return self._cache
+
+        try:
+            with open(self.settings_file, 'r', encoding='utf-8') as f:
+                self._cache = json.load(f)
+            defaults = self._get_defaults()
+            self._merge_defaults(self._cache, defaults)
+        except Exception as e:
+            print(f"[WARN] Failed to load settings: {e}, using defaults")
+            self._cache = self._get_defaults()
+
+        return self._cache
+
+    def _merge_defaults(self, current, defaults):
+        for key, value in defaults.items():
+            if key not in current:
+                current[key] = value
+            elif isinstance(value, dict) and isinstance(current[key], dict):
+                self._merge_defaults(current[key], value)
+
+    def save(self, settings=None):
+        if settings is None:
+            settings = self._cache
+        if settings is None:
+            return
+        self.settings_file.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2, ensure_ascii=False)
+            self._cache = settings
+
+    def get(self, key, default=None):
+        settings = self.load()
+        keys = key.split('.')
+        value = settings
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+
+    def set(self, key, value):
+        settings = self.load()
+        keys = key.split('.')
+        current = settings
+        for k in keys[:-1]:
+            if k not in current or not isinstance(current[k], dict):
+                current[k] = {}
+            current = current[k]
+        current[keys[-1]] = value
+        self.save(settings)
+
+    def reset_to_defaults(self):
+        defaults = self._get_defaults()
+        self.save(defaults)
+        return defaults
+
+# ===== ClassPubgConfig.py =====
+
+import os
+import re
+
+class PubgConfig:
+    def __init__(self):
+        self.config_path = os.path.join(os.environ['LOCALAPPDATA'], 
+                                        r"TslGame\Saved\Config\WindowsNoEditor\GameUserSettings.ini")
+        self.last_mtime = 0.0
+        self.last_size = 0
+        self.sensitivities = {}
+        self.true_sensitivities = {}  # LastConvertedSensitivity per scope
+        self.vertical_multiplier = 1.0
+
+    def parse_config(self):
+        if not os.path.exists(self.config_path):
+            return False
+
+        try:
+            st = os.stat(self.config_path)
+            curr_mtime = st.st_mtime
+            curr_size = st.st_size
+            
+            if curr_mtime == self.last_mtime and curr_size == self.last_size:
+                return False
+
+            try:
+                with open(self.config_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+            except PermissionError:
+                return False
+            
+            self.last_mtime = curr_mtime
+            self.last_size = curr_size
+
+            old_v = self.vertical_multiplier
+            old_sens = self.sensitivities.copy()
+            old_mode = getattr(self, 'ads_mode', 'HOLD')
+
+            v_matches = list(re.finditer(r'MouseVerticalSensitivityMultiplierAdjusted=([\d\.]+)', content))
+            if v_matches:
+                self.vertical_multiplier = float(v_matches[-1].group(1))
+
+            new_sens = {}
+            true_sens_map = {}
+            mouse_matches = list(re.finditer(r'SensitiveMap=\(Array=\((.*?)\)\)', content, re.DOTALL))
+            
+            match_source = content
+            if mouse_matches:
+                match_source = mouse_matches[-1].group(1)
+
+            parsed_any = False
+            for match in re.finditer(r'SensitiveName="([^"]+)",Sensitivity=([\d\.]+),LastConvertedSensitivity=([\d\.]+)', match_source):
+                name = match.group(1)
+                new_sens[name] = float(match.group(2))
+                true_sens_map[name] = float(match.group(3))
+                parsed_any = True
+
+            if not parsed_any:
+                for match in re.finditer(r'SensitiveName="([^"]+)",Sensitivity=([\d\.]+),LastConvertedSensitivity=([\d\.]+)', content):
+                    name = match.group(1)
+                    new_sens[name] = float(match.group(2))
+                    true_sens_map[name] = float(match.group(3))
+
+            self.sensitivities = new_sens
+            self.true_sensitivities = true_sens_map
+            
+            per_scope_matches = re.findall(r'bIsUsingPerScopeMouseSensitivity=(True|False)', content)
+            self.per_scope_enabled = False
+            if per_scope_matches and per_scope_matches[-1] == "False":
+                self.per_scope_enabled = True
+                master_sens = new_sens.get("ScopingMagnified", 50.0)
+                master_true = true_sens_map.get("ScopingMagnified", 0.02)
+                for s_key in ["Scope2X", "Scope3X", "Scope4X", "Scope6X", "Scope8X", "Scope15X"]:
+                    self.sensitivities[s_key] = master_sens
+                    self.true_sensitivities[s_key] = master_true
+
+            ads_match = re.search(r'InputModeADS=(\w+)', content)
+            self.ads_mode = ads_match.group(1) if ads_match else "Hold"
+            if (old_v == self.vertical_multiplier and old_sens == self.sensitivities and old_mode == self.ads_mode): return False
+            return True
+        except Exception as e: return False
+
+    def debug_print(self):
+        print("[HOT-RELOAD] Đã tải settings game thành công!")
+        print(f" => Vertical: {self.vertical_multiplier}")
+        print(f" => ADS Mode: {getattr(self, 'ads_mode', 'Hold')}")
+        order = ["Normal", "Targeting", "Scoping", "ScopingMagnified", "Scope2X", "Scope3X", "Scope4X", "Scope6X", "Scope8X", "Scope15X"]
+        for name in order:
+            if name in self.sensitivities:
+                print(f" => {name}: {round(self.sensitivities[name], 1)}")
+
+# ===== Detect/ClassToaDo.py =====
+
+# Đã làm sạch chú thích lỗi mã hóa.
+
+RAW_LAYOUTS = {
+    '1728x1080': {
+        'gun1_name': [1269, 76, 167, 53],
+        'gun1_scope': [1506, 101, 54, 62],
+        'gun1_muzzle': [1236, 220, 53, 66],
+        'gun1_grip': [1337, 220, 54, 66],
+        'gun2_name': [1268, 302, 169, 54],
+        'gun2_scope': [1507, 325, 55, 63],
+        'gun2_muzzle': [1235, 447, 53, 66],
+        'gun2_grip': [1338, 447, 52, 63],
+        'stance': [602, 954, 54, 79],
+    },
+    '1920x1080': {
+        'gun1_name': [1365, 77, 167, 52],
+        'gun1_scope': [1602, 98, 54, 66],
+        'gun1_muzzle': [1330, 220, 55, 67],
+        'gun1_grip': [1434, 220, 53, 65],
+        'gun2_name': [1364, 302, 170, 53],
+        'gun2_scope': [1602, 323, 56, 66],
+        'gun2_muzzle': [1331, 448, 54, 65],
+        'gun2_grip': [1432, 448, 54, 64],
+        'stance': [699, 958, 52, 74],
+    },
+}
+
+DATA = RAW_LAYOUTS
+
+# Helper Functions
+def get_roi(resolution_key):
+    return DATA.get(resolution_key, None)
+
+
+# ===== Detect/ClassCapture.py =====
+
+class CaptureLayoutContext:
+    def __init__(self, capture_mode="DXGI"):
+        self.capture_mode = str(capture_mode).upper()
+        self.native = None
+        self.native_capture_available = False
+        if self.capture_mode in {"DXGI", "NATIVE"}:
+            self.capture_mode = "DXGI"
+            self._init_native_capture()
+
+        # 0. Init DXCam if needed
+        self.camera = None
+        if self.capture_mode == "DXCAM":
+            try:
+                self.camera = dxcam.create(output_color="BGR")
+            except Exception:
+                self.capture_mode = "MSS"
+        elif self.capture_mode not in {"MSS", "DXGI"}:
+            self.capture_mode = "MSS"
+
+        self._sct = None
+        self.bbox = {}
+        self.local_rois = {}
+        self.region = None
+        self.full_monitor = None
+        user32 = ctypes.windll.user32
+        self.width = user32.GetSystemMetrics(0)
+        self.height = user32.GetSystemMetrics(1)
+        self.resolution = (self.width, self.height)
+        self.res_key = f"{self.width}x{self.height}"
+
+        saved_rois = get_roi(self.res_key)
+        if not saved_rois:
+            saved_rois = get_roi("1920x1080")
+
+        if saved_rois:
+            self.rois = self.convert_list_to_dict(saved_rois)
+        else:
+            self.rois = {}
+
+        self.calculate_bounding_box()
+
+    def _init_native_capture(self):
+        try:
+            dll_path = get_resource_path(os.path.join("native", "EngineCore.dll"))
+            if not os.path.exists(dll_path):
+                self.capture_mode = "MSS"
+                return
+            self.native = ctypes.CDLL(dll_path)
+            self.native.EngineCore_CaptureRegionBgr.argtypes = [
+                ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                ctypes.POINTER(EngineCoreImageView),
+            ]
+            self.native.EngineCore_CaptureRegionBgr.restype = ctypes.c_int
+            self.native.EngineCore_CaptureScreenBgr.argtypes = [ctypes.POINTER(EngineCoreImageView)]
+            self.native.EngineCore_CaptureScreenBgr.restype = ctypes.c_int
+            self.native.EngineCore_ReleaseCaptureBuffer.argtypes = []
+            self.native.EngineCore_ReleaseCaptureBuffer.restype = None
+            self.native_capture_available = True
+        except Exception:
+            self.native = None
+            self.native_capture_available = False
+            self.capture_mode = "MSS"
+
+    def set_capture_mode(self, mode):
+        mode_upper = str(mode or "DXGI").strip().upper()
+        if mode_upper in {"NATIVE", "DXGI"}:
+            mode_upper = "DXGI"
+        elif mode_upper in {"DIRECTX"}:
+            mode_upper = "DXCAM"
+        elif mode_upper in {"GDI", "GDI+", "PIL"}:
+            mode_upper = "MSS"
+        elif mode_upper not in {"DXCAM", "MSS"}:
+            mode_upper = "DXGI"
+
+        if self.capture_mode == mode_upper:
+            return
+
+        self.capture_mode = mode_upper
+
+        if mode_upper == "DXGI":
+            self.camera = None
+            self._init_native_capture()
+        elif mode_upper == "DXCAM":
+            self.native = None
+            self.native_capture_available = False
+            self.camera = None
+            try:
+                self.camera = dxcam.create(output_color="BGR")
+            except Exception:
+                self.capture_mode = "MSS"
+                self.camera = None
+        else:
+            self.native = None
+            self.native_capture_available = False
+            self.camera = None
+
+    def _native_view_to_ndarray(self, view):
+        if not view or not bool(view.data) or view.width <= 0 or view.height <= 0 or view.channels != 3:
+            return None
+        total_size = int(view.stride) * int(view.height)
+        base_ptr = ctypes.cast(view.data, ctypes.POINTER(ctypes.c_uint8))
+        raw = np.ctypeslib.as_array(base_ptr, shape=(total_size,))
+        frame = raw.reshape((int(view.height), int(view.stride)))
+        return frame[:, : int(view.width) * 3].reshape((int(view.height), int(view.width), 3)).copy()
+
+    def get_sct(self):
+        if self._sct is None:
+            if mss is None:
+                raise RuntimeError("mss is not available")
+            self._sct = mss.mss()
+        return self._sct
+
+    def convert_list_to_dict(self, saved_rois):
+        rois = {}
+        for key, val in saved_rois.items():
+            rois[key] = {"left": val[0], "top": val[1], "width": val[2], "height": val[3]}
+        return rois
+
+    def calculate_bounding_box(self):
+        if not self.rois:
+            return None
+
+        l = min(r["left"] for r in self.rois.values())
+        t = min(r["top"] for r in self.rois.values())
+        r_max = max(r["left"] + r["width"] for r in self.rois.values())
+        b_max = max(r["top"] + r["height"] for r in self.rois.values())
+
+        self.bbox = {
+            "left": l - 10,
+            "top": t - 10,
+            "width": (r_max - l) + 20,
+            "height": (b_max - t) + 20
+        }
+        self.region = (
+            self.bbox["left"],
+            self.bbox["top"],
+            self.bbox["left"] + self.bbox["width"],
+            self.bbox["top"] + self.bbox["height"],
+        )
+        self.full_monitor = {"top": 0, "left": 0, "width": self.width, "height": self.height}
+        self.local_rois = {
+            key: (
+                roi["left"] - self.bbox["left"],
+                roi["top"] - self.bbox["top"],
+                roi["width"],
+                roi["height"],
+            )
+            for key, roi in self.rois.items()
+        }
+
+    def grab_regional_image(self):
+        if not hasattr(self, 'bbox') or not self.bbox:
+            self.calculate_bounding_box()
+
+        if self.capture_mode == "DXGI" and self.native_capture_available and self.native:
+            view = EngineCoreImageView()
+            ok = self.native.EngineCore_CaptureRegionBgr(
+                int(self.bbox["left"]),
+                int(self.bbox["top"]),
+                int(self.bbox["width"]),
+                int(self.bbox["height"]),
+                ctypes.byref(view),
+            )
+            if ok:
+                arr = self._native_view_to_ndarray(view)
+                self.native.EngineCore_ReleaseCaptureBuffer()
+                if arr is not None:
+                    return arr
+
+        if self.capture_mode == "DXCAM" and self.camera:
+            frame = self.camera.grab(region=self.region)
+            if frame is not None:
+                return frame
+
+        sct_img = self.get_sct().grab(self.bbox)
+        return np.asarray(sct_img)[:, :, :3]
+
+    def get_roi_from_image(self, regional_img, roi_name):
+        roi = self.local_rois.get(roi_name)
+        if not roi or regional_img is None:
+            return None
+
+        lx, ly, w, h = roi
+        return regional_img[ly:ly+h, lx:lx+w]
+
+    def grab_screen(self):
+        if self.capture_mode == "DXGI" and self.native_capture_available and self.native:
+            view = EngineCoreImageView()
+            ok = self.native.EngineCore_CaptureScreenBgr(ctypes.byref(view))
+            if ok:
+                arr = self._native_view_to_ndarray(view)
+                self.native.EngineCore_ReleaseCaptureBuffer()
+                if arr is not None:
+                    return arr
+
+        if self.capture_mode == "DXCAM" and self.camera:
+            frame = self.camera.grab()
+            if frame is not None:
+                return frame
+
+        sct_img = self.get_sct().grab(self.full_monitor)
+        return np.asarray(sct_img)[:, :, :3]
+
+    def debug_rois(self):
+        img = self.grab_screen()
+        if not hasattr(self, 'bbox'):
+            self.calculate_bounding_box()
+
+        bx, by, bw, bh = self.bbox["left"], self.bbox["top"], self.bbox["width"], self.bbox["height"]
+        cv2.rectangle(img, (bx, by), (bx+bw, by+bh), (0, 0, 255), 3)
+        cv2.putText(img, "REGION", (bx, by-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+        for name, roi in self.rois.items():
+            x, y, w, h = roi["left"], roi["top"], roi["width"], roi["height"]
+            cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            cv2.putText(img, name, (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+        filename = "debug_roi_preview.jpg"
+        cv2.imwrite(filename, img)
+        return filename
+
+
+# ===== Detect/ClassDetection.py =====
+
+import cv2
+import os
+import numpy as np
+
+class PythonDetectionEngine:
+    def __init__(self, template_folder="templates"):
+        """
+        Khởi tạo hệ thống và nạp sẵn toàn bộ mẫu ảnh vào RAM.
+        """
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.template_dir = os.path.join(self.base_dir, template_folder)
+
+        width = win32api.GetSystemMetrics(0)
+        height = win32api.GetSystemMetrics(1)
+        self.res_key = f"{width}x{height}"
+        if os.path.isdir(os.path.join(self.template_dir, self.res_key)):
+            self.template_dir = os.path.join(self.template_dir, self.res_key)
+        elif os.path.isdir(os.path.join(self.template_dir, "1920x1080")):
+            self.template_dir = os.path.join(self.template_dir, "1920x1080")
+
+        self.templates = {
+            "weapons": {},
+            "ui": {},
+            "accessories": {},
+            "grip": {},
+            "scopes": {},
+            "stances": {},
+            "dieukien": {},
+        }
+        self.template_items = {key: [] for key in self.templates.keys()}
+
+        total_count = 0
+        for category in self.templates.keys():
+            total_count += self._load_category(category)
+        for category, mapping in self.templates.items():
+            items = []
+            for name, tpl in mapping.items():
+                tpl_h, tpl_w = tpl.shape[:2]
+                features = self._compute_template_features(tpl)
+                items.append((name, tpl, tpl_h, tpl_w, features))
+            self.template_items[category] = tuple(items)
+        self._last_match_by_category = {}
+        self._roi_match_cache = {}
+        self._weapon_prefilter_mean_delta = 26.0
+        self._weapon_prefilter_std_delta = 22.0
+        self._weapon_prefilter_probe_delta = 34.0
+        self._perfect_match_thresholds = {
+            "weapons": 0.995,
+            "scopes": 0.985,
+            "grip": 0.985,
+            "accessories": 0.985,
+            "stances": 0.980,
+            "dieukien": 0.970,
+        }
+        self._strong_match_thresholds = {
+            "weapons": 0.980,
+            "scopes": 0.965,
+            "grip": 0.965,
+            "accessories": 0.965,
+            "stances": 0.950,
+            "dieukien": 0.930,
+        }
+        print(f" > [SYSTEM] Detection Engine: Loaded {total_count} templates (BGR Mode)")
+
+    def _load_category(self, category):
+        path = os.path.join(self.template_dir, category)
+        if category == "stances":
+            path = os.path.join(self.template_dir, "stance")
+        if not os.path.exists(path):
+            return 0
+
+        count = 0
+        for file in os.listdir(path):
+            if file.lower().endswith((".png", ".jpg", ".jpeg")):
+                full_path = os.path.join(path, file)
+                img = self._read_image_unicode(full_path)
+                if img is not None:
+                    name = os.path.splitext(file)[0].upper()
+                    self.templates[category][name] = img
+                    count += 1
+        return count
+
+    def _read_image_unicode(self, full_path):
+        try:
+            data = np.fromfile(full_path, dtype=np.uint8)
+            if data.size == 0:
+                return None
+            return cv2.imdecode(data, cv2.IMREAD_COLOR)
+        except Exception:
+            return None
+
+    def _compute_template_features(self, image):
+        if image is None or getattr(image, "size", 0) == 0:
+            return None
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        probe = cv2.resize(gray, (8, 8), interpolation=cv2.INTER_AREA)
+        return {
+            "gray_mean": float(gray.mean()),
+            "gray_std": float(gray.std()),
+            "probe": probe.astype(np.float32, copy=False),
+        }
+
+    def _compute_roi_features(self, roi):
+        if roi is None or getattr(roi, "size", 0) == 0:
+            return None
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        probe = cv2.resize(gray, (8, 8), interpolation=cv2.INTER_AREA)
+        return {
+            "gray_mean": float(gray.mean()),
+            "gray_std": float(gray.std()),
+            "probe": probe.astype(np.float32, copy=False),
+        }
+
+    def _weapon_prefilter_pass(self, roi_features, tpl_features):
+        if not roi_features or not tpl_features:
+            return True
+        if abs(roi_features["gray_mean"] - tpl_features["gray_mean"]) > self._weapon_prefilter_mean_delta:
+            return False
+        if abs(roi_features["gray_std"] - tpl_features["gray_std"]) > self._weapon_prefilter_std_delta:
+            return False
+        probe_delta = cv2.absdiff(roi_features["probe"], tpl_features["probe"])
+        return float(probe_delta.mean()) <= self._weapon_prefilter_probe_delta
+
+    def _make_roi_cache_key(self, roi, category, threshold):
+        if roi is None or getattr(roi, "size", 0) == 0:
+            return None
+        try:
+            roi_bytes = roi.tobytes()
+        except Exception:
+            return None
+        roi_hash = zlib.adler32(roi_bytes) & 0xFFFFFFFF
+        return (category, roi.shape[0], roi.shape[1], int(round(float(threshold) * 1000.0)), roi_hash)
+
+    def _match(self, roi, category, threshold=0.8):
+        templates = self.template_items.get(category)
+        if not templates:
+            return "NONE"
+        cache_key = self._make_roi_cache_key(roi, category, threshold)
+        if cache_key is not None:
+            cached_value = self._roi_match_cache.get(cache_key)
+            if cached_value is not None:
+                if cached_value != "NONE":
+                    self._last_match_by_category[category] = cached_value
+                return cached_value
+
+        max_val = -1.0
+        best_name = "NONE"
+        roi_h, roi_w = roi.shape[:2]
+        recent_name = self._last_match_by_category.get(category)
+        perfect_match_threshold = float(self._perfect_match_thresholds.get(category, 0.995))
+        strong_match_threshold = float(self._strong_match_thresholds.get(category, 0.980))
+        roi_features = self._compute_roi_features(roi) if category == "weapons" else None
+
+        if recent_name:
+            for name, tpl, tpl_h, tpl_w, tpl_features in templates:
+                if name != recent_name:
+                    continue
+                if tpl_h <= roi_h and tpl_w <= roi_w:
+                    if category == "weapons" and not self._weapon_prefilter_pass(roi_features, tpl_features):
+                        break
+                    res = cv2.matchTemplate(roi, tpl, cv2.TM_CCOEFF_NORMED)
+                    _, val, _, _ = cv2.minMaxLoc(res)
+                    if val > max_val:
+                        max_val = val
+                        best_name = name
+                    if val >= perfect_match_threshold:
+                        self._last_match_by_category[category] = name
+                        if cache_key is not None:
+                            self._roi_match_cache[cache_key] = name
+                        return name
+                break
+
+        for name, tpl, tpl_h, tpl_w, tpl_features in templates:
+            if name == recent_name or tpl_h > roi_h or tpl_w > roi_w:
+                continue
+            if category == "weapons" and not self._weapon_prefilter_pass(roi_features, tpl_features):
+                continue
+
+            res = cv2.matchTemplate(roi, tpl, cv2.TM_CCOEFF_NORMED)
+            _, val, _, _ = cv2.minMaxLoc(res)
+
+            if val > max_val:
+                max_val = val
+                best_name = name
+
+            if val >= strong_match_threshold:
+                break
+
+        if max_val >= threshold:
+            self._last_match_by_category[category] = best_name
+            if cache_key is not None:
+                self._roi_match_cache[cache_key] = best_name
+            return best_name
+        if cache_key is not None:
+            self._roi_match_cache[cache_key] = "NONE"
+        return "NONE"
+
+    def detect_weapon_name(self, roi, threshold=0.8):
+        return self._match(roi, "weapons", threshold)
+
+    def detect_ui_anchor(self, roi, threshold=0.65):
+        return self._match(roi, "dieukien", threshold)
+
+    def detect_accessory(self, roi, threshold=0.8):
+        res = self._match(roi, "accessories", threshold)
+        if res == "NONE":
+            return "NONE"
+        name = res.upper()
+        if "GIAMGIAT" in name:
+            return "GiamGiat"
+        if "ANTIALUA" in name:
+            return "AnTiaLua"
+        if "GIAMRUNG" in name:
+            return "GiamRung"
+        if "ATLSMG" in name:
+            return "ATLsmg"
+        if "GGIATSMG" in name:
+            return "GGiatSMG"
+        if "GTHANHSMG" in name:
+            return "GThanhSMG"
+        return res
+
+    def detect_grip(self, roi, threshold=0.8):
+        res = self._match(roi, "grip", threshold)
+        if res == "NONE":
+            return "NONE"
+        name = res.upper()
+        if "TCDUNG" in name:
+            return "tcDung"
+        if "TCHONG" in name:
+            return "tcHong"
+        if "TCLASER" in name:
+            return "tcLaser"
+        if "TCNAMCHAT" in name:
+            return "tcNamChat"
+        if "TCNGHIENG" in name:
+            return "tcNghieng"
+        if "TCNHE" in name:
+            return "tcNhe"
+        return res
+
+    def detect_scope(self, roi, threshold=0.8):
+        res = self._match(roi, "scopes", threshold)
+        if res == "NONE":
+            return "NONE"
+        name = res.upper()
+        if "SCOPEKH" in name:
+            return "ScopeKH"
+        match = re.search(r'SCOPE(\d+)', name)
+        if match:
+            return "Scope" + match.group(1)
+        return res
+
+    def detect_stance(self, roi, threshold=0.6):
+        res = self._match(roi, "stances", threshold)
+        if res == "NONE":
+            return "Stand"
+
+        name = res.upper()
+        if "DUNG" in name:
+            return "Stand"
+        if "NGOI" in name:
+            return "Crouch"
+        if "NAM" in name:
+            return "Prone"
+        if "STANDING" in name:
+            return "Stand"
+        if "CROUCHING" in name:
+            return "Crouch"
+        if "PRONE" in name:
+            return "Prone"
+        return "Stand"
+
+# ===== Recoil/ClassConfig.py =====
+
+import importlib
+import re
 from pathlib import Path
 
+# Pre-load data once
+
+class RecoilConfig:
+    def __init__(self):
+        self.data = BaseRecoilDataModule.BaseRecoilData
+        self.cache = {}
+
+    def reload_data(self):
+        try:
+            importlib.reload(BaseRecoilDataModule)
+            self.data = BaseRecoilDataModule.BaseRecoilData
+            self.cache.clear()
+            return True
+        except Exception:
+            return False
+
+    def sync_native(self):
+        return True
+
+
+    def get_attr(self, obj, attr, default=None):
+        if isinstance(obj, dict): return obj.get(attr, default)
+        return getattr(obj, attr, default)
+
+    def get_master_multiplier(self, gun_data):
+        """
+        Calculates Final Fixed Multiplier (Base * Scope * Grip * Muzzle)
+        """
+        try:
+            w_name_raw = str(gun_data.get("name", "NONE")).strip()
+            weapons_dict = getattr(self.data, "Weapons", {})
+            w_name = w_name_raw if w_name_raw in weapons_dict else w_name_raw.upper()
+
+            if w_name not in weapons_dict:
+                return 1.0
+            w_data = weapons_dict[w_name]
+
+            sc_val_raw = str(gun_data.get("scope", "NONE"))
+            sc_val_upper = sc_val_raw.upper()
+
+            scope_map = {
+                "REDDOT": "Scope1", "HOLOSIGHT": "Scope1", "NONE": "Scope1",
+                "2X": "Scope2", "3X": "Scope3", "4X": "Scope4", "6X": "Scope6", "8X": "Scope8"
+            }
+
+            if "KH" in sc_val_upper:
+                match = re.search(r"\d+", sc_val_upper)
+                digit = match.group() if match else "1"
+                sc_key = f"ScopeKH{digit}"
+            else:
+                sc_key = scope_map.get(sc_val_upper)
+                if not sc_key:
+                    val = sc_val_raw.split('_')[0]
+                    sc_key = val.capitalize() if val.lower().startswith('scope') else val
+
+            scope_mult = getattr(self.data, "scope_multipliers", {}).get(sc_key, 1.0)
+
+            g_key_raw = gun_data.get("grip", "NONE")
+            grips_map = getattr(self.data, "grips", {})
+            grip_match = next((v for k, v in grips_map.items() if k.lower() == g_key_raw.lower()), None)
+            grip_mult = float(grip_match if grip_match is not None else grips_map.get("NONE", 1.25))
+
+            m_key_raw = gun_data.get("accessories", "NONE")
+            acc_map = getattr(self.data, "accessories", {})
+            acc_match = next((v for k, v in acc_map.items() if k.lower() == m_key_raw.lower()), None)
+            muzzle_mult = float(acc_match if acc_match is not None else acc_map.get("NONE", 1.25))
+
+            total = scope_mult * grip_mult * muzzle_mult
+
+            strength_map = {
+                "Scope1": "Strength_Normal", "ScopeKH1": "Strength_Normal",
+                "Scope2": "Strength_2x", "Scope3": "Strength_3x",
+                "Scope4": "Strength_4x", "ScopeKH4": "Strength_4x",
+                "Scope6": "Strength_6x", "Scope8": "Strength_8x"
+            }
+            str_attr = strength_map.get(sc_key)
+            if str_attr:
+                strength_percent = getattr(self.data, str_attr, 100)
+                total = total * (float(strength_percent) / 100.0)
+
+            return total
+
+        except Exception:
+            return 1.0
+
+    def get_all_stance_multipliers(self, w_name):
+        """Lấy bộ hệ số tư thế của súng từ ClassBaseRecoil"""
+        try:
+            weapons_dict = getattr(self.data, "Weapons", {})
+            w_key = w_name if w_name in weapons_dict else w_name.upper()
+            if w_key not in weapons_dict:
+                return {"Stand": 1.25, "Crouch": 1.0, "Prone": 0.7}
+
+            w_data = weapons_dict[w_key]
+            st_data = self.get_attr(w_data, "stance_multipliers", {})
+
+            return {
+                "Stand": self.get_attr(st_data, "Stand", 1.0),
+                "Crouch": self.get_attr(st_data, "Crouch", 1.0),
+                "Prone": self.get_attr(st_data, "Prone", 1.0)
+            }
+
+        except:
+            return {"Stand": 1.25, "Crouch": 1.0, "Prone": 0.7}
+
+    def get_base_table(self, w_name):
+        try:
+            weapons_dict = getattr(self.data, "Weapons", {})
+            w_key = w_name if w_name in weapons_dict else w_name.upper()
+            if w_key not in weapons_dict:
+                return []
+            return self.get_attr(weapons_dict[w_key], "BaseTable", [])
+        except:
+            return []
+
+    def get_raw_pattern(self, base_table):
+
+        raw_pattern = []
+        for entry in base_table:
+            if len(entry) == 2:
+                val, count = entry
+                for _ in range(int(count)): raw_pattern.append(val)
+            elif len(entry) == 1: raw_pattern.append(entry[0])
+        return raw_pattern
+
+
+class SensitivityCalculator:
+    def __init__(self):
+        self.base_vert_sens = 1.0
+        self.base_sens = 30.0
+
+    def calculate_sens_multiplier(self, pubg_config, gun_info, hybrid_mode="Scope1"):
+        curr_vert = getattr(pubg_config, "vertical_multiplier", 1.0)
+        if curr_vert <= 0:
+            curr_vert = self.base_vert_sens
+        vert_factor = self.base_vert_sens / curr_vert
+
+        scope_name = str(gun_info.get("scope", "NONE")).upper()
+        sens_key = "Scoping"
+        if "NONE" in scope_name:
+            sens_key = "Targeting"
+        elif "2" in scope_name:
+            sens_key = "Scope2X"
+        elif "3" in scope_name:
+            sens_key = "Scope3X"
+        elif "4" in scope_name:
+            sens_key = "Scope4X"
+        elif "6" in scope_name:
+            sens_key = "Scope3X"
+        elif "8" in scope_name:
+            sens_key = "Scope3X"
+        elif "15" in scope_name:
+            sens_key = "Scope3X"
+
+        if "SCOPEKH" in scope_name:
+            sens_key = "Scope4X" if hybrid_mode == "Scope4" else "Scoping"
+
+        in_game_sens = getattr(pubg_config, "sensitivities", {}).get(sens_key, self.base_sens)
+        if in_game_sens <= 0:
+            in_game_sens = self.base_sens
+        scope_factor = math.pow(10, (self.base_sens - in_game_sens) / 50.0)
+        return scope_factor * vert_factor
+
+
+# ===== Recoil/ClassGhimTam.py =====
+
 import win32api
-import win32gui
+import win32con
+import time
+from threading import Thread
 
-try:
-    import winsound
-except Exception:
-    winsound = None
+class RecoilExecutor:
+    def __init__(self):
+        super().__init__()
+        self.config = RecoilConfig()
+        self.running = False
+        self.thread = None
+        self.pattern = []
+        self.current_index = 0
+        self.full_pattern_done = False
+        self.gun_base_mult = 1.0
+        self.st_stand = 1.0
+        self.st_crouch = 1.0
+        self.st_prone = 1.0
+        self.live_stance = "Stand"
+        self.current_gun_name = "NONE"
+        self._remainder_y = 0.0
 
-from PyQt6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, QThread, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QFontMetrics, QIcon, QKeySequence, QPainter, QPen, QPixmap
-from PyQt6.QtWidgets import (
-    QApplication,
-    QCheckBox,
-    QColorDialog,
-    QComboBox,
-    QDialog,
-    QFileDialog,
-    QFrame,
-    QGraphicsDropShadowEffect,
-    QGridLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QMainWindow,
-    QMenu,
-    QMessageBox,
-    QPushButton,
-    QSizePolicy,
-    QSlider,
-    QStackedWidget,
-    QStyle,
-    QStyledItemDelegate,
-    QStyleOptionComboBox,
-    QStylePainter,
-    QSystemTrayIcon,
-    QVBoxLayout,
-    QWidget,
-)
+    def start_recoil(self, base_pattern, initial_stance="Stand"):
+        self.stop_recoil()
+        self.live_stance = initial_stance
+        self._remainder_y = 0.0
+        self.pattern = list(base_pattern or [])
+        self.current_index = 0
+        self.full_pattern_done = False
+        self.running = True
+        self.thread = Thread(target=self._recoil_loop, daemon=True)
+        self.thread.start()
 
-from src.core.path_utils import get_resource_path
-from src.core.settings import SettingsManager
-import src.core.utils as Utils
+    def stop_recoil(self):
+        self.running = False
+
+    def reload_config(self):
+        if self.config:
+            self.config.reload_data()
+        self.thread = None
+
+    def _recoil_loop(self):
+        sampling_rate = 0.008
+        if hasattr(self.config.data, "sampling_rate_ms"):
+            sampling_rate = self.config.data.sampling_rate_ms / 1000.0
+
+        next_time = time.perf_counter()
+        while self.running:
+            if not is_game_active():
+                self.running = False
+                break
+
+            next_time += sampling_rate
+            if self.current_index < len(self.pattern):
+                st_mult = self.st_stand
+                if self.live_stance == "Crouch":
+                    st_mult = self.st_crouch
+                elif self.live_stance == "Prone":
+                    st_mult = self.st_prone
+
+                final_mult = self.gun_base_mult * st_mult
+                pixels = self.pattern[self.current_index] * final_mult
+                self.current_index += 1
+                if self.current_index >= len(self.pattern):
+                    self.full_pattern_done = True
+
+                total_y = pixels + self._remainder_y
+                move_y = int(total_y)
+                self._remainder_y = total_y - move_y
+
+                if move_y != 0:
+                    win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, move_y, 0, 0)
+
+            curr_t = time.perf_counter()
+            if next_time > curr_t:
+                time.sleep(next_time - curr_t)
+            else:
+                next_time = curr_t
+
+
+PHYSICAL_KEYS = set()
+INJECT_LOCK = threading.Lock()
+INJECTED_EVENTS = {}
+
+
+def add_injected_event(key, is_press):
+    with INJECT_LOCK:
+        if key in ("shift_l", "shift_r"):
+            key = "shift"
+        token = f"{str(key).lower()}_{'press' if is_press else 'release'}"
+        INJECTED_EVENTS.setdefault(token, []).append(time.time())
+
+
+def consume_injected_event(key, is_press):
+    with INJECT_LOCK:
+        if key in ("shift_l", "shift_r"):
+            key = "shift"
+        token = f"{str(key).lower()}_{'press' if is_press else 'release'}"
+        now = time.time()
+        if token in INJECTED_EVENTS:
+            INJECTED_EVENTS[token] = [t for t in INJECTED_EVENTS[token] if now - t < 1.0]
+            if INJECTED_EVENTS[token]:
+                INJECTED_EVENTS[token].pop(0)
+                return True
+        return False
+
+
+class KeyboardListener(QObject):
+    signal_key_event = pyqtSignal(str, bool)
+    signal_action = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.listener = None
+        self.running = False
+        self.key_map = {
+            "1": "SLOT_1", "!": "SLOT_1",
+            "2": "SLOT_2", "@": "SLOT_2",
+            "3": "MACRO_PAUSE", "#": "MACRO_PAUSE",
+            "4": "MACRO_PAUSE", "$": "MACRO_PAUSE",
+            "5": "MACRO_PAUSE", "%": "MACRO_PAUSE",
+            "6": "MACRO_PAUSE", "^": "MACRO_PAUSE",
+            "7": "MACRO_PAUSE", "&": "MACRO_PAUSE",
+            "g": "MACRO_PAUSE",
+            "x": "MACRO_PAUSE",
+            "c": "STANCE_CROUCH",
+            "z": "STANCE_PRONE",
+            "space": "STANCE_JUMP",
+        }
+        self.raw_keys = {'r'}
+        self.pressed_keys = set()
+        self.current_guitoggle_key = 'f1'
+        self.raw_keys.add(self.current_guitoggle_key)
+        self.native_passthrough_keys = {
+            "caps_lock", "shift", "shift_l", "shift_r",
+            "ctrl", "ctrl_l", "ctrl_r",
+            "alt", "alt_l", "alt_r",
+            "w", "a", "s", "d", "c",
+        }
+
+    def _is_native_passthrough_release_noise(self, key_name: str) -> bool:
+        if key_name not in self.native_passthrough_keys:
+            return False
+        vk = int(gui_key_to_vk(key_name))
+        if vk <= 0:
+            return False
+        try:
+            return (win32api.GetAsyncKeyState(vk) & 0x8000) != 0
+        except Exception:
+            return False
+
+    def update_guitoggle_key(self, new_key):
+        new_key = new_key.lower()
+        if self.current_guitoggle_key in self.raw_keys:
+            self.raw_keys.discard(self.current_guitoggle_key)
+        self.raw_keys.add(new_key)
+        self.current_guitoggle_key = new_key
+
+    def start_listening(self):
+        if not self.listener:
+            self.listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
+            self.listener.start()
+            self.running = True
+
+    def stop_listening(self):
+        if self.listener:
+            self.listener.stop()
+            self.listener = None
+            self.running = False
+
+    def on_press(self, key):
+        try:
+            k_str = self.get_key_name(key)
+            if not k_str: return
+            if consume_injected_event(k_str, True):
+                return
+            PHYSICAL_KEYS.add(k_str)
+            is_raw = k_str in self.raw_keys
+            is_native_passthrough = k_str in self.native_passthrough_keys
+            action = self.key_map.get(k_str)
+            if not is_raw and not action and not is_native_passthrough:
+                return
+            if k_str in self.pressed_keys:
+                return
+            self.pressed_keys.add(k_str)
+            if is_raw or is_native_passthrough:
+                self.signal_key_event.emit(k_str, True)
+            if action:
+                self.signal_action.emit(action)
+        except Exception as e:
+            print(f"[KeyError] {e}")
+
+    def on_release(self, key):
+        try:
+            k_str = self.get_key_name(key)
+            if not k_str: return
+            if consume_injected_event(k_str, False):
+                return
+            if self._is_native_passthrough_release_noise(k_str):
+                return
+            if k_str in PHYSICAL_KEYS:
+                PHYSICAL_KEYS.discard(k_str)
+            if k_str in self.pressed_keys:
+                self.pressed_keys.remove(k_str)
+            if k_str in self.raw_keys or k_str in self.native_passthrough_keys:
+                self.signal_key_event.emit(k_str, False)
+        except Exception as e:
+            print(f"[KEYBOARD] on_release error: {e}")
+
+    def get_key_name(self, key):
+        if hasattr(key, 'char') and key.char:
+            return key.char.lower()
+        elif hasattr(key, 'name'):
+            return key.name
+        else:
+            return str(key).replace("Key.", "")
+
+
+class MouseListener(QObject):
+    signal_click = pyqtSignal(str, bool)
+
+    def __init__(self):
+        super().__init__()
+        self.listener = None
+        self.running = False
+
+    def start_listening(self):
+        if not self.listener:
+            self.listener = mouse.Listener(on_click=self.on_click)
+            self.listener.start()
+            self.running = True
+
+    def stop_listening(self):
+        if self.listener:
+            self.listener.stop()
+            self.listener = None
+            self.running = False
+
+    def on_click(self, x, y, button, pressed):
+        try:
+            btn_str = str(button).replace("Button.", "")
+            self.signal_click.emit(btn_str, pressed)
+        except Exception as e:
+            print(f"[MOUSE] on_click error: {e}")
+
+# ===== GUI/UI_Utils.py =====
+
 from PyQt6.QtWidgets import (QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QFrame)
 from PyQt6.QtCore import Qt
 
@@ -472,7 +1847,7 @@ class ModernDialog(QDialog):
 
 class AppNoticeDialog:
     @staticmethod
-    def question(parent, title, message, buttons=("CÃ³", "KhÃ´ng")):
+    def question(parent, title, message, buttons=("Có", "Không")):
         dlg = ModernDialog(parent, title, message, buttons=buttons, is_question=True)
         dlg.exec()
         return dlg.result_value == buttons[0]
@@ -484,11 +1859,11 @@ class AppNoticeDialog:
 
     @staticmethod
     def warning(parent, title, message):
-        dlg = ModernDialog(parent, title, message, buttons=("Hiá»ƒu rá»“i",), is_question=False)
+        dlg = ModernDialog(parent, title, message, buttons=("Hiểu rồi",), is_question=False)
         dlg.exec()
 
     @staticmethod
-    def custom_choice(parent, title, message, buttons=("Táº¯t", "Xuá»‘ng Tray", "Há»§y")):
+    def custom_choice(parent, title, message, buttons=("Tắt", "Xuống Tray", "Hủy")):
         dlg = ModernDialog(parent, title, message, buttons=buttons, is_question=True)
         dlg.exec()
         return dlg.result_value
@@ -538,9 +1913,9 @@ class HomePanelBuilder:
                 title="MACRO STATUS",
                 title_color="#ff8f8f",
                 rows=[
-                    ("TÆ° tháº¿", "home_macro_stance_value", "Äá»¨NG", "#f2f2f2"),
+                    ("Tư thế", "home_macro_stance_value", "ĐỨNG", "#f2f2f2"),
                     ("ADS", "home_macro_ads_value", "HOLD", "#66ffc2"),
-                    ("Cháº¿ Äá»™ Chá»¥p", "home_macro_capture_value", "DXGI", "#89d4ff"),
+                    ("Chế Độ Chụp", "home_macro_capture_value", "DXGI", "#89d4ff"),
                 ],
                 toggle_attr="home_macro_toggle_btn",
                 toggle_handler=getattr(owner, "toggle_home_macro", None),
@@ -554,8 +1929,8 @@ class HomePanelBuilder:
                 title_color="#73f0ff",
                 rows=[
                     ("Model", "home_aim_model_value", "N/A", "#f2f2f2"),
-                    ("Backend", "home_aim_backend_value", "ChÆ°a náº¡p", "#f2f2f2"),
-                    ("Cháº¿ Äá»™ Chá»¥p", "home_aim_capture_value", "DirectX", "#89d4ff"),
+                    ("Backend", "home_aim_backend_value", "Chưa nạp", "#f2f2f2"),
+                    ("Chế Độ Chụp", "home_aim_capture_value", "DirectX", "#89d4ff"),
                 ],
                 toggle_attr="home_aim_toggle_btn",
                 toggle_handler=getattr(owner, "toggle_home_aim", None),
@@ -725,14 +2100,14 @@ class HomePanelBuilder:
                 badge_text="\u2022 T\u1ea1m D\u1eebng",
                 badge_color="#ff7e7e",
                 badge_attr="home_metric_fps_badge",
-                helper_text="Khung hÃ¬nh thá»i gian thá»±c",
+                helper_text="Khung hình thời gian thực",
                 tone="#101612",
             ),
             1,
         )
         layout.addWidget(
             self._build_metric_card(
-                title="Äá»™ Trá»…",
+                title="Độ Trễ",
                 value_attr="home_metric_inf_value",
                 text="0",
                 color="#ffd7a1",
@@ -740,7 +2115,7 @@ class HomePanelBuilder:
                 badge_text="\u2022 T\u1ea1m D\u1eebng",
                 badge_color="#ff7e7e",
                 badge_attr="home_metric_inf_badge",
-                helper_text="Äá»™ trá»… suy luáº­n hiá»‡n táº¡i",
+                helper_text="Độ trễ suy luận hiện tại",
                 tone="#17130f",
             ),
             1,
@@ -1157,14 +2532,14 @@ class AimPanelBuilder:
         layout = owner.aim_display_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_display", "Hiá»ƒn Thá»‹", owner.aim_display_box))
+        layout.addWidget(self._header("header_aim_display", "Hiển Thị", owner.aim_display_box))
 
         display_toggle_row = QHBoxLayout()
         display_toggle_row.setContentsMargins(0, 0, 0, 0)
         display_toggle_row.setSpacing(18)
 
-        owner.aim_chk_show_fov = QCheckBox("Hiá»ƒn Thá»‹ FOV")
-        owner.aim_chk_show_detect = QCheckBox("Hiá»ƒn Thá»‹ Khung Detect")
+        owner.aim_chk_show_fov = QCheckBox("Hiển Thị FOV")
+        owner.aim_chk_show_detect = QCheckBox("Hiển Thị Khung Detect")
 
         for checkbox in (owner.aim_chk_show_fov, owner.aim_chk_show_detect):
             checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1239,7 +2614,7 @@ class AimPanelBuilder:
         status_row_layout.setSpacing(6)
         owner.lbl_aim_model_title = QLabel("Models")
         owner.lbl_aim_model_sep = QLabel(":")
-        owner.lbl_aim_model_status = QLabel("ChÆ°a táº£i")
+        owner.lbl_aim_model_status = QLabel("Chưa tải")
         for widget in (owner.lbl_aim_model_title, owner.lbl_aim_model_sep, owner.lbl_aim_model_status):
             widget.setStyleSheet(
                 """
@@ -1255,7 +2630,7 @@ class AimPanelBuilder:
         status_row_layout.addStretch(1)
         layout.addWidget(owner.aim_model_status_row)
 
-        owner.lbl_aim_mode_info = QLabel("Cháº¿ Äá»™: TÄƒng Tá»‘c")
+        owner.lbl_aim_mode_info = QLabel("Chế Độ: Tăng Tốc")
         owner.lbl_aim_mode_info.setStyleSheet(
             """
             QLabel {
@@ -1269,7 +2644,7 @@ class AimPanelBuilder:
         )
         layout.addWidget(owner.lbl_aim_mode_info)
 
-        owner.lbl_aim_backend_info = QLabel("Backend: ChÆ°a náº¡p")
+        owner.lbl_aim_backend_info = QLabel("Backend: Chưa nạp")
         owner.lbl_aim_backend_info.setStyleSheet(
             """
             QLabel {
@@ -1291,8 +2666,8 @@ class AimPanelBuilder:
         meta_layout.setContentsMargins(2, 0, 2, 0)
         meta_layout.setSpacing(8)
 
-        owner.lbl_aim_model_status_meta = QLabel("Runtime: Native DLL chá»")
-        owner.lbl_aim_runtime_meta = QLabel("Backend: ChÆ°a náº¡p")
+        owner.lbl_aim_model_status_meta = QLabel("Runtime: Native DLL chờ")
+        owner.lbl_aim_runtime_meta = QLabel("Backend: Chưa nạp")
 
         for widget, color in (
             (owner.lbl_aim_model_status_meta, "#cfcfcf"),
@@ -1322,7 +2697,7 @@ class AimPanelBuilder:
         layout = owner.aim_capture_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_capture", "PhÆ°Æ¡ng Thá»©c Chá»¥p", owner.aim_capture_box))
+        layout.addWidget(self._header("header_aim_capture", "Phương Thức Chụp", owner.aim_capture_box))
 
         owner.combo_aim_capture = QComboBox()
         owner.combo_aim_capture.setFixedHeight(26)
@@ -1360,13 +2735,13 @@ class AimPanelBuilder:
         layout = owner.aim_shortcuts_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_shortcuts", "PhÃ­m Táº¯t", owner.aim_shortcuts_box))
+        layout.addWidget(self._header("header_aim_shortcuts", "Phím Tắt", owner.aim_shortcuts_box))
 
         layout.addLayout(
             self._create_button_row(
                 "aim_lbl_emergency_stop",
                 "aim_btn_emergency_stop",
-                "Báº­t/Táº¯t Aim",
+                "Bật/Tắt Aim",
                 "F8",
                 "aim_emergency_stop_key",
             )
@@ -1375,7 +2750,7 @@ class AimPanelBuilder:
             self._create_button_row(
                 "aim_lbl_primary",
                 "aim_btn_primary",
-                "PhÃ­m Aim",
+                "Phím Aim",
                 "RIGHT MOUSE",
                 "aim_primary_key",
             )
@@ -1384,7 +2759,7 @@ class AimPanelBuilder:
             self._create_button_row(
                 "aim_lbl_secondary",
                 "aim_btn_secondary",
-                "PhÃ­m Aim Phá»¥",
+                "Phím Aim Phụ",
                 "LEFT CTRL",
                 "aim_secondary_key",
             )
@@ -1393,7 +2768,7 @@ class AimPanelBuilder:
             self._create_button_row(
                 "aim_lbl_trigger",
                 "aim_btn_trigger",
-                "Báº­t/Táº¯t Trigger",
+                "Bật/Tắt Trigger",
                 "F7",
                 "aim_trigger_key",
             )
@@ -1405,14 +2780,14 @@ class AimPanelBuilder:
         layout = owner.aim_settings_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_settings", "CÃ i Äáº·t", owner.aim_settings_box))
+        layout.addWidget(self._header("header_aim_settings", "Cài Đặt", owner.aim_settings_box))
 
         for row in (
             self._create_slider_row(
                 "aim_lbl_fov",
                 "aim_slider_fov",
                 "aim_fov_value_label",
-                "VÃ¹ng FOV",
+                "Vùng FOV",
                 "300",
                 10,
                 640,
@@ -1424,7 +2799,7 @@ class AimPanelBuilder:
                 "aim_lbl_confidence",
                 "aim_slider_confidence",
                 "aim_confidence_value_label",
-                "NgÆ°á»¡ng Tin Cáº­y AI",
+                "Ngưỡng Tin Cậy AI",
                 "45%",
                 1,
                 100,
@@ -1436,7 +2811,7 @@ class AimPanelBuilder:
                 "aim_lbl_trigger_delay",
                 "aim_slider_trigger_delay",
                 "aim_trigger_delay_value_label",
-                "Äá»™ Trá»… Tá»± Báº¯n",
+                "Độ Trễ Tự Bắn",
                 "100 ms",
                 10,
                 1000,
@@ -1450,7 +2825,7 @@ class AimPanelBuilder:
                 "aim_lbl_capture_fps",
                 "aim_slider_capture_fps",
                 "aim_capture_fps_value_label",
-                "Tá»‘c Äá»™ Chá»¥p (FPS)",
+                "Tốc Độ Chụp (FPS)",
                 "144",
                 1,
                 240,
@@ -1461,7 +2836,7 @@ class AimPanelBuilder:
             self._create_combo_row(
                 "aim_lbl_target_priority",
                 "combo_aim_target_priority",
-                "Æ¯u TiÃªn",
+                "Ưu Tiên",
                 ("Body -> Head", "Head -> Body"),
                 "Body -> Head",
             ),
@@ -1474,14 +2849,14 @@ class AimPanelBuilder:
         layout = owner.aim_smoothing_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_smoothing", "Äá»™ Nháº¡y / Äá»™ MÆ°á»£t", owner.aim_smoothing_box))
+        layout.addWidget(self._header("header_aim_smoothing", "Độ Nhạy / Độ Mượt", owner.aim_smoothing_box))
 
         for row in (
             self._create_slider_row(
                 "aim_lbl_sensitivity",
                 "aim_slider_sensitivity",
                 "aim_sensitivity_value_label",
-                "Äá»™ Nháº¡y Chuá»™t",
+                "Độ Nhạy Chuột",
                 "0.80",
                 1,
                 100,
@@ -1492,7 +2867,7 @@ class AimPanelBuilder:
                 "aim_lbl_ema",
                 "aim_slider_ema",
                 "aim_ema_value_label",
-                "Äá»™ MÆ°á»£t",
+                "Độ Mượt",
                 "0.50",
                 1,
                 100,
@@ -1503,7 +2878,7 @@ class AimPanelBuilder:
                 "aim_lbl_jitter",
                 "aim_slider_jitter",
                 "aim_jitter_value_label",
-                "Äá»™ Rung Chuá»™t",
+                "Độ Rung Chuột",
                 "4",
                 0,
                 15,
@@ -1514,7 +2889,7 @@ class AimPanelBuilder:
                 "aim_lbl_primary_position",
                 "aim_slider_primary_position",
                 "aim_primary_position_value_label",
-                "Vá»‹ TrÃ­ Aim ChÃ­nh",
+                "Vị Trí Aim Chính",
                 "50",
                 0,
                 100,
@@ -1526,7 +2901,7 @@ class AimPanelBuilder:
                 "aim_lbl_secondary_position",
                 "aim_slider_secondary_position",
                 "aim_secondary_position_value_label",
-                "Vá»‹ TrÃ­ Aim Phá»¥",
+                "Vị Trí Aim Phụ",
                 "50",
                 0,
                 100,
@@ -1544,7 +2919,7 @@ class AimPanelBuilder:
         layout = owner.aim_listing_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_listing", "Danh SÃ¡ch Liá»‡t KÃª", owner.aim_listing_box))
+        layout.addWidget(self._header("header_aim_listing", "Danh Sách Liệt Kê", owner.aim_listing_box))
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1617,7 +2992,7 @@ class AimPanelBuilder:
         layout = owner.aim_advanced_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_advanced", "TÃ¹y Chá»n NÃ¢ng Cao", owner.aim_advanced_box))
+        layout.addWidget(self._header("header_aim_advanced", "Tùy Chọn Nâng Cao", owner.aim_advanced_box))
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1718,7 +3093,7 @@ class AimPanelBuilder:
                 f"aim_lbl_file_{key.replace(' ', '_').lower()}",
                 f"aim_btn_file_{key.replace(' ', '_').lower()}",
                 label,
-                "Chá»n DLL",
+                "Chọn DLL",
                 lambda _checked=False, file_key=key: owner.choose_aim_file_location(file_key),
             )
             content_layout.addLayout(row)
@@ -1786,34 +3161,34 @@ class AimPanelBuilder:
 
     def _advanced_toggle_specs(self):
         return [
-            ("Constant AI Tracking", "Tracking LiÃªn Tá»¥c"),
+            ("Constant AI Tracking", "Tracking Liên Tục"),
             ("Sticky Aim", "Sticky Aim"),
-            ("Predictions", "Dá»± ÄoÃ¡n"),
-            ("Enable Model Switch Keybind", "Báº­t PhÃ­m Äá»•i Model"),
+            ("Predictions", "Dự Đoán"),
+            ("Enable Model Switch Keybind", "Bật Phím Đổi Model"),
             ("FOV", "Logic FOV"),
-            ("Dynamic FOV", "FOV Äá»™ng"),
-            ("Third Person Support", "GÃ³c NhÃ¬n Thá»© 3"),
+            ("Dynamic FOV", "FOV Động"),
+            ("Third Person Support", "Góc Nhìn Thứ 3"),
             ("Masking", "Masking"),
             ("Cursor Check", "Cursor Check"),
             ("Spray Mode", "Spray Mode"),
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            ("Collect Data While Playing", "Thu Data Khi ChÆ¡i"),
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            ("Collect Data While Playing", "Thu Data Khi Chơi"),
             ("Auto Label Data", "Auto Label Data"),
             ("LG HUB Mouse Movement", "LG HUB Mouse"),
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             ("Debug Mode", "Debug Mode"),
-            ("UI TopMost", "UI LuÃ´n TrÃªn CÃ¹ng"),
+            ("UI TopMost", "UI Luôn Trên Cùng"),
             ("StreamGuard", "StreamGuard"),
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
         ]
 
     def _advanced_dropdown_specs(self):
         return [
             {
                 "key": "Prediction Method",
-                "label": "Kiá»ƒu Dá»± ÄoÃ¡n",
+                "label": "Kiểu Dự Đoán",
                 "label_attr": "aim_lbl_prediction_method",
                 "combo_attr": "combo_aim_prediction_method",
                 "default": "Kalman Filter",
@@ -1821,7 +3196,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Detection Area Type",
-                "label": "VÃ¹ng Detect",
+                "label": "Vùng Detect",
                 "label_attr": "aim_lbl_detection_area_type",
                 "combo_attr": "combo_aim_detection_area_type",
                 "default": "Closest to Center Screen",
@@ -1829,7 +3204,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Aiming Boundaries Alignment",
-                "label": "CÄƒn BiÃªn Aim",
+                "label": "Căn Biên Aim",
                 "label_attr": "aim_lbl_aiming_boundaries",
                 "combo_attr": "combo_aim_aiming_boundaries",
                 "default": "Center",
@@ -1837,7 +3212,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Mouse Movement Method",
-                "label": "Kiá»ƒu Di Chuá»™t",
+                "label": "Kiểu Di Chuột",
                 "label_attr": "aim_lbl_mouse_movement_method",
                 "combo_attr": "combo_aim_mouse_movement_method",
                 "default": "Mouse Event",
@@ -1845,7 +3220,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Tracer Position",
-                "label": "Vá»‹ TrÃ­ Tracer",
+                "label": "Vị Trí Tracer",
                 "label_attr": "aim_lbl_tracer_position",
                 "combo_attr": "combo_aim_tracer_position",
                 "default": "Bottom",
@@ -1853,7 +3228,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Movement Path",
-                "label": "ÄÆ°á»ng Aim",
+                "label": "Đường Aim",
                 "label_attr": "aim_lbl_movement_path",
                 "combo_attr": "combo_aim_movement_path",
                 "default": "Cubic Bezier",
@@ -1869,7 +3244,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Target Class",
-                "label": "Class Má»¥c TiÃªu",
+                "label": "Class Mục Tiêu",
                 "label_attr": "aim_lbl_target_class",
                 "combo_attr": "combo_aim_target_class",
                 "default": "Best Confidence",
@@ -1879,9 +3254,9 @@ class AimPanelBuilder:
 
     def _advanced_color_specs(self):
         return [
-            ("FOV Color", "MÃ u FOV", "#FF8080FF"),
-            ("Detected Player Color", "MÃ u ESP", "#FF00FFFF"),
-            ("Theme Color", "MÃ u Theme", "#FF722ED1"),
+            ("FOV Color", "Màu FOV", "#FF8080FF"),
+            ("Detected Player Color", "Màu ESP", "#FF00FFFF"),
+            ("Theme Color", "Màu Theme", "#FF722ED1"),
         ]
 
     def _advanced_file_specs(self):
@@ -1908,7 +3283,7 @@ class AimPanelBuilder:
         return [
             {
                 "key": "Dynamic FOV Size",
-                "label": "KÃ­ch ThÆ°á»›c FOV Äá»™ng",
+                "label": "Kích Thước FOV Động",
                 "label_attr": "aim_lbl_dynamic_fov",
                 "slider_attr": "aim_slider_dynamic_fov",
                 "value_attr": "aim_dynamic_fov_value_label",
@@ -1923,7 +3298,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Sticky Aim Threshold",
-                "label": "NgÆ°á»¡ng BÃ¡m Má»¥c TiÃªu",
+                "label": "Ngưỡng Bám Mục Tiêu",
                 "label_attr": "aim_lbl_sticky_threshold",
                 "slider_attr": "aim_slider_sticky_threshold",
                 "value_attr": "aim_sticky_threshold_value_label",
@@ -1937,7 +3312,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Y Offset (Up/Down)",
-                "label": "Lá»‡ch Y",
+                "label": "Lệch Y",
                 "label_attr": "aim_lbl_y_offset",
                 "slider_attr": "aim_slider_y_offset",
                 "value_attr": "aim_y_offset_value_label",
@@ -1951,7 +3326,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Y Offset (%)",
-                "label": "Lá»‡ch Y %",
+                "label": "Lệch Y %",
                 "label_attr": "aim_lbl_y_offset_percent",
                 "slider_attr": "aim_slider_y_offset_percent",
                 "value_attr": "aim_y_offset_percent_value_label",
@@ -1965,7 +3340,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "X Offset (Left/Right)",
-                "label": "Lá»‡ch X",
+                "label": "Lệch X",
                 "label_attr": "aim_lbl_x_offset",
                 "slider_attr": "aim_slider_x_offset",
                 "value_attr": "aim_x_offset_value_label",
@@ -1979,7 +3354,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "X Offset (%)",
-                "label": "Lá»‡ch X %",
+                "label": "Lệch X %",
                 "label_attr": "aim_lbl_x_offset_percent",
                 "slider_attr": "aim_slider_x_offset_percent",
                 "value_attr": "aim_x_offset_percent_value_label",
@@ -2049,7 +3424,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Corner Radius",
-                "label": "Bo GÃ³c ESP",
+                "label": "Bo Góc ESP",
                 "label_attr": "aim_lbl_corner_radius",
                 "slider_attr": "aim_slider_corner_radius",
                 "value_attr": "aim_corner_radius_value_label",
@@ -2063,7 +3438,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Border Thickness",
-                "label": "DÃ y Viá»n",
+                "label": "Dày Viền",
                 "label_attr": "aim_lbl_border_thickness",
                 "slider_attr": "aim_slider_border_thickness",
                 "value_attr": "aim_border_thickness_value_label",
@@ -2077,7 +3452,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Opacity",
-                "label": "Äá»™ Trong",
+                "label": "Độ Trong",
                 "label_attr": "aim_lbl_opacity",
                 "slider_attr": "aim_slider_opacity",
                 "value_attr": "aim_opacity_value_label",
@@ -2559,18 +3934,18 @@ class CrosshairOverlay(QWidget):
 
     def set_color(self, color_name):
         colors = {
-            "Äá»": QColor(255, 30, 30),
-            "Äá» Cam": QColor(255, 69, 0),
+            "Đỏ": QColor(255, 30, 30),
+            "Đỏ Cam": QColor(255, 69, 0),
             "Cam": QColor(255, 140, 0),
-            "VÃ ng": QColor(255, 255, 0),
-            "Xanh LÃ¡": QColor(0, 255, 0),
-            "Xanh Ngá»c": QColor(0, 255, 255),
-            "Xanh DÆ°Æ¡ng": QColor(0, 180, 255),
-            "TÃ­m": QColor(180, 0, 255),
-            "TÃ­m Há»“ng": QColor(255, 60, 255),
-            "Há»“ng": QColor(255, 105, 180),
-            "Tráº¯ng": QColor(255, 255, 255),
-            "Báº¡c": QColor(192, 192, 192),
+            "Vàng": QColor(255, 255, 0),
+            "Xanh Lá": QColor(0, 255, 0),
+            "Xanh Ngọc": QColor(0, 255, 255),
+            "Xanh Dương": QColor(0, 180, 255),
+            "Tím": QColor(180, 0, 255),
+            "Tím Hồng": QColor(255, 60, 255),
+            "Hồng": QColor(255, 105, 180),
+            "Trắng": QColor(255, 255, 255),
+            "Bạc": QColor(192, 192, 192),
         }
         self.color = colors.get(str(color_name), QColor(255, 255, 255))
         self.update()
@@ -2696,9 +4071,9 @@ class GameOverlay(QWidget):
     def update_status(self, gun_name, scope, stance, grip="NONE", muzzle="NONE", is_paused=False, is_firing=False, ai_status="HIBERNATE"):
         self.is_firing = bool(is_firing)
         if is_paused:
-            text, color = "Táº M Dá»ªNG", "#FF0000"
+            text, color = "TẠM DỪNG", "#FF0000"
         elif gun_name == "NONE":
-            text, color = "CHÆ¯A CÃ“ SÃšNG", "#FFFF00"
+            text, color = "CHƯA CÓ SÚNG", "#FFFF00"
         else:
             scope_raw = str(scope).lower()
             sc_val = "X1"
@@ -2719,17 +4094,17 @@ class GameOverlay(QWidget):
 
             vn_stance = str(stance)
             if "STAND" in vn_stance.upper():
-                vn_stance = "Äá»¨NG"
+                vn_stance = "ĐỨNG"
             elif "CROUCH" in vn_stance.upper():
-                vn_stance = "NGá»’I"
+                vn_stance = "NGỒI"
             elif "PRONE" in vn_stance.upper():
-                vn_stance = "Náº°M"
+                vn_stance = "NẰM"
 
             parts = [str(gun_name).upper(), sc_val]
             if str(grip).upper() != "NONE":
                 parts.append("TAY")
             if str(muzzle).upper() != "NONE":
-                parts.append("NÃ’NG")
+                parts.append("NÒNG")
             parts.append(vn_stance)
             text = " | ".join(parts)
             color = "#00FF00"
@@ -2765,7 +4140,7 @@ class GameOverlay(QWidget):
 
 class MacroWindow(QMainWindow):
     signal_settings_changed = pyqtSignal() # Signal to notify Backend/InputBridge of config changes
-    WINDOW_WIDTH = 930
+    WINDOW_WIDTH = 810
 
     def __init__(self):
         super().__init__()
@@ -2781,7 +4156,6 @@ class MacroWindow(QMainWindow):
         w = win32api.GetSystemMetrics(0)
         h = win32api.GetSystemMetrics(1)
         self.detected_resolution = f"{w}x{h}"
-        ResolutionNoticeDialog(self.detected_resolution, self).exec()
         
         # 2. Logic Components (Connected via set_backend)
         self.backend = None
@@ -3287,9 +4661,9 @@ class MacroWindow(QMainWindow):
         banner_map = {
             "home": {
                 "eyebrow": "DI88 CONTROL",
-                "title": "TRUNG TÃ‚M ÄIá»€U KHIá»‚N",
+                "title": "TRUNG TÂM ĐIỀU KHIỂN",
                 "subtitle": "Macro & Aim By Di88",
-                "badge": "Tá»”NG Há»¢P",
+                "badge": "TỔNG HỢP",
                 "gradient_start": "#0d1e33",
                 "gradient_end": "#112944",
                 "hover_start": "#123053",
@@ -3306,9 +4680,9 @@ class MacroWindow(QMainWindow):
             },
             "macro": {
                 "eyebrow": "DI88 MACRO",
-                "title": "TRUNG TÃ‚M MACRO",
-                "subtitle": "Nháº­n diá»‡n sÃºng, ADS vÃ  Ä‘iá»u khiá»ƒn recoil",
-                "badge": "â€¢ ÄANG Báº¬T" if macro_on else "â€¢ ÄANG Táº®T",
+                "title": "TRUNG TÂM MACRO",
+                "subtitle": "Nhận diện súng, ADS và điều khiển recoil",
+                "badge": "• ĐANG BẬT" if macro_on else "• ĐANG TẮT",
                 "gradient_start": "#251112",
                 "gradient_end": "#34181a",
                 "hover_start": "#341618",
@@ -3325,9 +4699,9 @@ class MacroWindow(QMainWindow):
             },
             "aim": {
                 "eyebrow": "DI88 AIM",
-                "title": "TRUNG TÃ‚M AIM",
-                "subtitle": "Theo dÃµi má»¥c tiÃªu vÃ  Ä‘iá»u khiá»ƒn ngáº¯m",
-                "badge": "â€¢ ÄANG Báº¬T" if aim_on else "â€¢ ÄANG Táº®T",
+                "title": "TRUNG TÂM AIM",
+                "subtitle": "Theo dõi mục tiêu và điều khiển ngắm",
+                "badge": "• ĐANG BẬT" if aim_on else "• ĐANG TẮT",
                 "gradient_start": "#0d2417",
                 "gradient_end": "#143121",
                 "hover_start": "#12311f",
@@ -3450,7 +4824,7 @@ class MacroWindow(QMainWindow):
         if badge_label is None:
             return
         if is_on:
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             badge_label.setStyleSheet(
                 f"""
                 QLabel {{
@@ -3463,7 +4837,7 @@ class MacroWindow(QMainWindow):
                 """
             )
         else:
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             badge_label.setStyleSheet(
                 """
                 QLabel {
@@ -3532,13 +4906,13 @@ class MacroWindow(QMainWindow):
             self.home_metric_macro_value.setText(macro_text)
             self.home_metric_macro_value.setStyleSheet(f"QLabel {{ color: {macro_color}; font-size: 14px; font-weight: 900; background: transparent; border: none; }}")
         if hasattr(self, "home_metric_macro_value_hint"):
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             self.home_metric_macro_value_hint.setVisible(macro_text == "ON")
         if hasattr(self, "home_metric_aim_value"):
             self.home_metric_aim_value.setText(aim_text)
             self.home_metric_aim_value.setStyleSheet(f"QLabel {{ color: {aim_color}; font-size: 14px; font-weight: 900; background: transparent; border: none; }}")
         if hasattr(self, "home_metric_aim_value_hint"):
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             self.home_metric_aim_value_hint.setVisible(aim_text == "ON")
         if hasattr(self, "home_metric_fps_value"):
             self.home_metric_fps_value.setText(fps_text)
@@ -3561,7 +4935,7 @@ class MacroWindow(QMainWindow):
         if hasattr(self, "home_aim_toggle_btn"):
             self._update_home_toggle_button_style(self.home_aim_toggle_btn, aim_text == "ON", "#73f0ff")
 
-        stance_text = "Äá»¨NG"
+        stance_text = "ĐỨNG"
         if hasattr(self, "lbl_stance") and self.lbl_stance:
             stance_text = self.lbl_stance.text().split(":")[-1].strip() or stance_text
         ads_text = "HOLD"
@@ -3572,7 +4946,7 @@ class MacroWindow(QMainWindow):
         if hasattr(self, "combo_aim_model") and self.combo_aim_model and self.combo_aim_model.count():
             model_text = self.combo_aim_model.currentText().strip() or model_text
         aim_capture_text = getattr(self, "current_aim_capture_mode", "DirectX")
-        backend_text = "ChÆ°a náº¡p"
+        backend_text = "Chưa nạp"
         runtime_source = ""
         if hasattr(self, "last_data") and isinstance(self.last_data, dict):
             aim_runtime_state = self.last_data.get("aim", {})
@@ -3606,25 +4980,25 @@ class MacroWindow(QMainWindow):
     def _format_aim_runtime_source_text(self, runtime_source: str) -> str:
         text = str(runtime_source or "").strip()
         normalized = text.lower()
-        if "error" in normalized or "lá»—i" in normalized:
-            return "Runtime: Native DLL lá»—i"
-        if "not ready" in normalized or "chÆ°a" in normalized:
-            return "Runtime: Native DLL chá»"
+        if "error" in normalized or "lỗi" in normalized:
+            return "Runtime: Native DLL lỗi"
+        if "not ready" in normalized or "chưa" in normalized:
+            return "Runtime: Native DLL chờ"
         if "native" in normalized:
             return "Runtime: Native DLL"
-        return "Runtime: ChÆ°a náº¡p"
+        return "Runtime: Chưa nạp"
 
     def _normalize_aim_backend_text(self, backend_text: str) -> str:
-        text = str(backend_text or "").strip() or "ChÆ°a náº¡p"
+        text = str(backend_text or "").strip() or "Chưa nạp"
         if text.lower() in {"not loaded", "booting", "idle"}:
-            return "ChÆ°a náº¡p"
+            return "Chưa nạp"
         for prefix in ("Native DLL /", "Native "):
             if text.lower().startswith(prefix.lower()):
                 text = text[len(prefix):].strip()
                 break
         if text.lower() in {"not ready", "none", "n/a"}:
-            return "ChÆ°a náº¡p"
-        return text.upper() if text != "ChÆ°a náº¡p" else text
+            return "Chưa nạp"
+        return text.upper() if text != "Chưa nạp" else text
 
     def _format_aim_backend_meta_text(self, backend_text: str, runtime_source: str = "") -> str:
         return f"Backend: {self._normalize_aim_backend_text(backend_text)}"
@@ -3632,15 +5006,15 @@ class MacroWindow(QMainWindow):
     def _format_home_aim_backend_text(self, backend_text: str, runtime_source: str = "") -> str:
         runtime = self._format_aim_runtime_source_text(runtime_source).replace("Runtime:", "").strip()
         backend = self._normalize_aim_backend_text(backend_text)
-        if runtime and runtime != "ChÆ°a náº¡p":
+        if runtime and runtime != "Chưa nạp":
             return f"{runtime} / {backend}"
         return backend
 
     def set_aim_model_status(self, text: str, color: str = "#cfcfcf"):
         normalized = {
-            "KhÃ´ng cÃ³ model": "\u004b\u0068\u00f4\u006e\u0067 \u0063\u00f3 \u006d\u006f\u0064\u0065\u006c",
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            "Không có model": "\u004b\u0068\u00f4\u006e\u0067 \u0063\u00f3 \u006d\u006f\u0064\u0065\u006c",
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
         }.get(text, text)
         if normalized == "\u0110\u00e3 \u0074\u1ea3\u0069":
             normalized = "\u0110\u00e3 \u004e\u1ea1\u0070"
@@ -3687,7 +5061,7 @@ class MacroWindow(QMainWindow):
                 }}
             """)
         if hasattr(self, "lbl_aim_runtime_meta") and self.lbl_aim_runtime_meta:
-            backend_text = "ChÆ°a náº¡p"
+            backend_text = "Chưa nạp"
             runtime_source = ""
             if hasattr(self, "last_data") and isinstance(self.last_data, dict):
                 runtime_source = str(self.last_data.get("aim", {}).get("runtime_source", "") or "")
@@ -3715,13 +5089,13 @@ class MacroWindow(QMainWindow):
         if not hasattr(self, "aim_model_notice") or self.aim_model_notice is None:
             return
         model_name = (model_name or "").strip()
-        if model_name == "KhÃ´ng cÃ³ model":
+        if model_name == "Không có model":
             return
-        if not model_name or model_name in ("KhÃ´ng cÃ³ model", "Khong co model"):
+        if not model_name or model_name in ("Không có model", "Khong co model"):
             return
         fg = "#ffb3b3" if error else "#f4f4f4"
         border = "#7a3a3a" if error else "#545454"
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         self.aim_model_notice.setText(
             f"\u004c\u1ed7\u0069 \u006e\u1ea1\u0070 \u006d\u006f\u0064\u0065\u006c: {model_name}"
             if error
@@ -3750,8 +5124,8 @@ class MacroWindow(QMainWindow):
             return
         text = self.combo_aim_model.currentText().strip()
         if not text or text in (
-            "KhÃ´ng cÃ³ model",
-            "KhÃ´ng cÃ³ model",
+            "Không có model",
+            "Không có model",
             "\u004b\u0068\u00f4\u006e\u0067 \u0063\u00f3 \u006d\u006f\u0064\u0065\u006c",
         ):
             self.set_aim_model_status("\u004b\u0068\u00f4\u006e\u0067 \u0063\u00f3 \u006d\u006f\u0064\u0065\u006c", "#ff9c9c")
@@ -3880,7 +5254,7 @@ class MacroWindow(QMainWindow):
         button = getattr(self, "aim_color_controls", {}).get(key)
         current_value = button.property("color_value") if button is not None else "#FFFFFFFF"
         initial = self._qcolor_from_argb_hex(str(current_value or "#FFFFFFFF"))
-        chosen = QColorDialog.getColor(initial, self, f"Chá»n {key}", QColorDialog.ColorDialogOption.ShowAlphaChannel)
+        chosen = QColorDialog.getColor(initial, self, f"Chọn {key}", QColorDialog.ColorDialogOption.ShowAlphaChannel)
         if not chosen.isValid():
             return
         value = f"#{chosen.alpha():02X}{chosen.red():02X}{chosen.green():02X}{chosen.blue():02X}"
@@ -3907,7 +5281,7 @@ class MacroWindow(QMainWindow):
         button = getattr(self, "aim_file_controls", {}).get(key)
         current = str(button.property("file_value") or "") if button is not None else ""
         start_dir = str(Path(current).parent) if current else str(Path.home())
-        file_path, _ = QFileDialog.getOpenFileName(self, f"Chá»n {key}", start_dir, "DLL Files (*.dll);;All Files (*.*)")
+        file_path, _ = QFileDialog.getOpenFileName(self, f"Chọn {key}", start_dir, "DLL Files (*.dll);;All Files (*.*)")
         if not file_path:
             return
         self.set_aim_file_button(key, file_path)
@@ -3919,7 +5293,7 @@ class MacroWindow(QMainWindow):
             return
         text = str(value or "").strip()
         button.setProperty("file_value", text)
-        button.setText(Path(text).name if text else "Chá»n DLL")
+        button.setText(Path(text).name if text else "Chọn DLL")
 
     def load_aim_file_controls(self, aim_file_locations: dict):
         for key, button in getattr(self, "aim_file_controls", {}).items():
@@ -3952,9 +5326,9 @@ class MacroWindow(QMainWindow):
         self.combo_aim_model.clear()
 
         if not models:
-            self.combo_aim_model.addItem("KhÃ´ng cÃ³ model")
+            self.combo_aim_model.addItem("Không có model")
             self.combo_aim_model.setEnabled(False)
-            self.set_aim_model_status("KhÃ´ng cÃ³ model", "#ff9c9c")
+            self.set_aim_model_status("Không có model", "#ff9c9c")
             self.combo_aim_model.blockSignals(False)
             return
 
@@ -3964,25 +5338,25 @@ class MacroWindow(QMainWindow):
         target_model = selected_model if selected_model in models else models[0]
         self.combo_aim_model.setCurrentText(target_model)
         self.combo_aim_model.blockSignals(False)
-        self.set_aim_model_status("ÄÃ£ táº£i", "#74ffc8")
+        self.set_aim_model_status("Đã tải", "#74ffc8")
 
     def on_aim_model_changed(self, index: int):
         if index < 0 or not hasattr(self, "combo_aim_model"):
             return
         text = self.combo_aim_model.currentText().strip()
-        if not text or text == "KhÃ´ng cÃ³ model":
-            self.set_aim_model_status("KhÃ´ng cÃ³ model", "#ff9c9c")
+        if not text or text == "Không có model":
+            self.set_aim_model_status("Không có model", "#ff9c9c")
         else:
-            self.set_aim_model_status("ÄÃ£ táº£i", "#74ffc8")
+            self.set_aim_model_status("Đã tải", "#74ffc8")
 
     def on_aim_model_changed(self, index: int):
         if index < 0 or not hasattr(self, "combo_aim_model"):
             return
         text = self.combo_aim_model.currentText().strip()
-        if not text or text in ("KhÃ´ng cÃ³ model", "Khong co model"):
-            self.set_aim_model_status("KhÃ´ng cÃ³ model", "#ff9c9c")
+        if not text or text in ("Không có model", "Khong co model"):
+            self.set_aim_model_status("Không có model", "#ff9c9c")
         else:
-            self.set_aim_model_status("ÄÃ£ táº£i", "#74ffc8")
+            self.set_aim_model_status("Đã tải", "#74ffc8")
             self.show_aim_model_notice(text)
 
     def update_scope_intensity_label(self, scope_key: str, value: int):
@@ -4062,21 +5436,21 @@ class MacroWindow(QMainWindow):
 
     def build_aim_test_slider_specs(self):
         return [
-            {"key": "Dynamic FOV Size", "label": "FOV Äá»™ng", "min": 10, "max": 640, "step": 1, "scale": 1, "default": 200, "format": "int"},
-            {"key": "Mouse Sensitivity (+/-)", "label": "Äá»™ Nháº¡y Chuá»™t", "min": 1, "max": 100, "step": 1, "scale": 100, "default": 0.80, "format": "float2"},
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            {"key": "Dynamic FOV Size", "label": "FOV Động", "min": 10, "max": 640, "step": 1, "scale": 1, "default": 200, "format": "int"},
+            {"key": "Mouse Sensitivity (+/-)", "label": "Độ Nhạy Chuột", "min": 1, "max": 100, "step": 1, "scale": 100, "default": 0.80, "format": "float2"},
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
             {"key": "EMA Smoothening", "label": "EMA Smooth", "min": 1, "max": 100, "step": 1, "scale": 100, "default": 0.5, "format": "float2"},
             {"key": "Kalman Lead Time", "label": "Kalman Lead", "min": 2, "max": 30, "step": 1, "scale": 100, "default": 0.10, "format": "float2"},
             {"key": "WiseTheFox Lead Time", "label": "Wise Lead", "min": 2, "max": 30, "step": 1, "scale": 100, "default": 0.15, "format": "float2"},
             {"key": "Shalloe Lead Multiplier", "label": "Shalloe Lead", "min": 2, "max": 20, "step": 1, "scale": 2, "default": 3.0, "format": "float1"},
             {"key": "AI Confidence Font Size", "label": "Font Detect", "min": 1, "max": 30, "step": 1, "scale": 1, "default": 20, "format": "int"},
-            {"key": "Corner Radius", "label": "Bo GÃ³c", "min": 0, "max": 100, "step": 1, "scale": 1, "default": 0, "format": "int"},
-            {"key": "Border Thickness", "label": "Äá»™ DÃ y Viá»n", "min": 1, "max": 100, "step": 1, "scale": 10, "default": 1.0, "format": "float1"},
-            {"key": "Opacity", "label": "Äá»™ Trong", "min": 0, "max": 10, "step": 1, "scale": 10, "default": 1.0, "format": "float1"},
+            {"key": "Corner Radius", "label": "Bo Góc", "min": 0, "max": 100, "step": 1, "scale": 1, "default": 0, "format": "int"},
+            {"key": "Border Thickness", "label": "Độ Dày Viền", "min": 1, "max": 100, "step": 1, "scale": 10, "default": 1.0, "format": "float1"},
+            {"key": "Opacity", "label": "Độ Trong", "min": 0, "max": 10, "step": 1, "scale": 10, "default": 1.0, "format": "float1"},
         ]
 
     def aim_test_slider_to_value(self, spec: dict, slider_value: int):
@@ -4153,25 +5527,25 @@ class MacroWindow(QMainWindow):
 
         self.hover_hint_targets = {}
         if hasattr(self, 'header_detection'):
-            self._add_hover_widget(self.header_detection, "ThÃ´ng tin vÅ© khÃ­ hiá»‡n táº¡i.")
+            self._add_hover_widget(self.header_detection, "Thông tin vũ khí hiện tại.")
         if hasattr(self, 'header_settings'):
-            self._add_hover_widget(self.header_settings, "Thiáº¿t láº­p cÃ¡c phÃ­m chá»©c nÄƒng, cháº¿ Ä‘á»™ chá»¥p vÃ  cÃ¡c tÃ¹y chá»n macro cÆ¡ báº£n.")
+            self._add_hover_widget(self.header_settings, "Thiết lập các phím chức năng, chế độ chụp và các tùy chọn macro cơ bản.")
         if hasattr(self, 'header_crosshair'):
-            self._add_hover_widget(self.header_crosshair, "Thiáº¿t láº­p tÃ¢m ngáº¯m, kiá»ƒu hiá»ƒn thá»‹ vÃ  mÃ u hiá»ƒn thá»‹.")
+            self._add_hover_widget(self.header_crosshair, "Thiết lập tâm ngắm, kiểu hiển thị và màu hiển thị.")
         if hasattr(self, 'lbl_fastloot_row'):
-            self._add_hover_widget(self.lbl_fastloot_row, "TÃ­nh nÄƒng nháº·t Ä‘á»“ nhanh.")
+            self._add_hover_widget(self.lbl_fastloot_row, "Tính năng nhặt đồ nhanh.")
         if hasattr(self, 'lbl_slide_row'):
-            self._add_hover_widget(self.lbl_slide_row, "Giá»¯ Shift + W + ( A hoáº·c D ) rá»“i báº¥m C Ä‘á»ƒ thá»±c hiá»‡n thao tÃ¡c lÆ°á»›t ngá»“i.")
+            self._add_hover_widget(self.lbl_slide_row, "Giữ Shift + W + ( A hoặc D ) rồi bấm C để thực hiện thao tác lướt ngồi.")
         if hasattr(self, 'lbl_stopkeys_row'):
-            self._add_hover_widget(self.lbl_stopkeys_row, "Danh sÃ¡ch phÃ­m dá»«ng kháº©n cáº¥p.")
+            self._add_hover_widget(self.lbl_stopkeys_row, "Danh sách phím dừng khẩn cấp.")
         if hasattr(self, 'lbl_adsmode_row'):
-            self._add_hover_widget(self.lbl_adsmode_row, "Tráº¡ng thÃ¡i cháº¿ Ä‘á»™ ADS hiá»‡n táº¡i.")
+            self._add_hover_widget(self.lbl_adsmode_row, "Trạng thái chế độ ADS hiện tại.")
         if hasattr(self, 'lbl_guitoggle_row'):
-            self._add_hover_widget(self.lbl_guitoggle_row, "PhÃ­m áº©n hoáº·c hiá»‡n cá»­a sá»• app ngay láº­p tá»©c.")
+            self._add_hover_widget(self.lbl_guitoggle_row, "Phím ẩn hoặc hiện cửa sổ app ngay lập tức.")
         if hasattr(self, 'lbl_overlay_row'):
-            self._add_hover_widget(self.lbl_overlay_row, "PhÃ­m Ä‘iá»u khiá»ƒn lá»›p overlay hiá»ƒn thá»‹ trong game.")
+            self._add_hover_widget(self.lbl_overlay_row, "Phím điều khiển lớp overlay hiển thị trong game.")
         if hasattr(self, 'lbl_capture_row'):
-            self._add_hover_widget(self.lbl_capture_row, "Chá»n backend chá»¥p mÃ n hÃ¬nh dÃ¹ng cho detect vÃ  runtime.")
+            self._add_hover_widget(self.lbl_capture_row, "Chọn backend chụp màn hình dùng cho detect và runtime.")
 
     def _add_hover_target(self, parent: QWidget, rect: QRect, text: str):
         anchor = QFrame(parent)
@@ -4358,18 +5732,18 @@ class MacroWindow(QMainWindow):
             swatch = color_value
         else:
             color_map = {
-                "Äá»": QColor(255, 30, 30),
-                "Äá» Cam": QColor(255, 69, 0),
+                "Đỏ": QColor(255, 30, 30),
+                "Đỏ Cam": QColor(255, 69, 0),
                 "Cam": QColor(255, 140, 0),
-                "VÃ ng": QColor(255, 215, 0),
-                "Xanh LÃ¡": QColor(0, 255, 0),
-                "Xanh Ngá»c": QColor(0, 255, 255),
-                "Xanh DÆ°Æ¡ng": QColor(0, 180, 255),
-                "TÃ­m": QColor(180, 0, 255),
-                "TÃ­m Há»“ng": QColor(255, 60, 255),
-                "Há»“ng": QColor(255, 105, 180),
-                "Tráº¯ng": QColor(255, 255, 255),
-                "Báº¡c": QColor(192, 192, 192),
+                "Vàng": QColor(255, 215, 0),
+                "Xanh Lá": QColor(0, 255, 0),
+                "Xanh Ngọc": QColor(0, 255, 255),
+                "Xanh Dương": QColor(0, 180, 255),
+                "Tím": QColor(180, 0, 255),
+                "Tím Hồng": QColor(255, 60, 255),
+                "Hồng": QColor(255, 105, 180),
+                "Trắng": QColor(255, 255, 255),
+                "Bạc": QColor(192, 192, 192),
             }
             swatch = color_map.get(color_value, QColor(255, 30, 30))
 
@@ -4788,7 +6162,7 @@ class MacroWindow(QMainWindow):
                 border: none;
             }
         """)
-        self.page_banner_title = QLabel("TRUNG TÃ‚M ÄIá»€U KHIá»‚N")
+        self.page_banner_title = QLabel("TRUNG TÂM ĐIỀU KHIỂN")
         self.page_banner_title.setStyleSheet("color: #f3f6fb; font-size: 17px; font-weight: 900; letter-spacing: 1px; background: transparent; border: none;")
         self.page_banner_subtitle = QLabel("Macro & Aim By Di88")
         self.page_banner_subtitle.setStyleSheet("color: #a8ccef; font-size: 11px; font-weight: 700; letter-spacing: 0px; background: transparent; border: none;")
@@ -4796,7 +6170,7 @@ class MacroWindow(QMainWindow):
         banner_text_layout.addWidget(self.page_banner_title)
         banner_text_layout.addWidget(self.page_banner_subtitle)
 
-        self.page_banner_badge = QLabel("Tá»”NG Há»¢P")
+        self.page_banner_badge = QLabel("TỔNG HỢP")
         self.page_banner_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.page_banner_badge.setMinimumWidth(122)
         self.page_banner_badge.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
@@ -4927,17 +6301,17 @@ class MacroWindow(QMainWindow):
 
         detection_layout.addLayout(detection_row)
 
-        self.group_settings = MacroTitledBox("HÆ°á»›ng Dáº«n Sá»­ Dá»¥ng", "SettingsBox")
+        self.group_settings = MacroTitledBox("Hướng Dẫn Sử Dụng", "SettingsBox")
         self.group_settings.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         settings_layout = self.group_settings.content_layout()
         settings_layout.setSpacing(6)
         self.header_settings = None
-        self.bind_box = MacroTitledBox("Bind NÃºt", "BindBox")
+        self.bind_box = MacroTitledBox("Bind Nút", "BindBox")
         self.bind_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         bind_layout = self.bind_box.content_layout()
         bind_layout.setSpacing(6)
         self.header_bind = None
-        self.toggle_box = MacroTitledBox("Báº­t/Táº¯t", "ToggleBox")
+        self.toggle_box = MacroTitledBox("Bật/Tắt", "ToggleBox")
         self.toggle_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         toggle_layout = self.toggle_box.content_layout()
         toggle_layout.setSpacing(6)
@@ -5004,10 +6378,10 @@ class MacroWindow(QMainWindow):
         self.btn_fastloot_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_fastloot_toggle.setFixedSize(50, 24)
         self.btn_fastloot_toggle.hide()
-        self.lbl_fastloot_row = add_settings_grid_row(bind_layout, "Nháº·t Äá»“ Nhanh", self.btn_fastloot_key)
+        self.lbl_fastloot_row = add_settings_grid_row(bind_layout, "Nhặt Đồ Nhanh", self.btn_fastloot_key)
         self.btn_fastloot_switch = MobileSwitch(False)
         self.btn_fastloot_switch.toggled.connect(self.toggle_fast_loot)
-        self.lbl_fastloot_toggle_row = add_toggle_row(toggle_layout, "Nháº·t Äá»“ Nhanh", self.btn_fastloot_switch)
+        self.lbl_fastloot_toggle_row = add_toggle_row(toggle_layout, "Nhặt Đồ Nhanh", self.btn_fastloot_switch)
         self.lbl_fastloot_toggle_row.setFixedWidth(122)
         self.lbl_fastloot_toggle_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -5016,7 +6390,7 @@ class MacroWindow(QMainWindow):
         self.btn_slide_hint.setEnabled(False)
         self.btn_slide_hint.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_slide_hint)
-        self.lbl_slide_row = add_settings_grid_row(settings_layout, "LÆ°á»›t Ngá»“i", self.btn_slide_hint)
+        self.lbl_slide_row = add_settings_grid_row(settings_layout, "Lướt Ngồi", self.btn_slide_hint)
 
         self.btn_slide_toggle = QPushButton("ON")
         self.btn_slide_toggle.setObjectName("SlideToggleBtn")
@@ -5027,7 +6401,7 @@ class MacroWindow(QMainWindow):
         self.btn_slide_toggle.hide()
         self.btn_slide_switch = MobileSwitch(True)
         self.btn_slide_switch.toggled.connect(self.toggle_slide_trick)
-        self.lbl_slide_toggle_row = add_toggle_row(toggle_layout, "LÆ°á»›t Ngá»“i", self.btn_slide_switch)
+        self.lbl_slide_toggle_row = add_toggle_row(toggle_layout, "Lướt Ngồi", self.btn_slide_switch)
         self.lbl_slide_toggle_row.setFixedWidth(122)
         self.lbl_slide_toggle_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -5036,28 +6410,28 @@ class MacroWindow(QMainWindow):
         self.btn_slot1_hint.setEnabled(False)
         self.btn_slot1_hint.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_slot1_hint)
-        self.lbl_slot1_row = add_settings_grid_row(settings_layout, "PhÃ­m SÃºng 1", self.btn_slot1_hint)
+        self.lbl_slot1_row = add_settings_grid_row(settings_layout, "Phím Súng 1", self.btn_slot1_hint)
 
         self.btn_slot2_hint = QPushButton("2")
         self.btn_slot2_hint.setProperty("role", "setting-btn")
         self.btn_slot2_hint.setEnabled(False)
         self.btn_slot2_hint.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_slot2_hint)
-        self.lbl_slot2_row = add_settings_grid_row(settings_layout, "PhÃ­m SÃºng 2", self.btn_slot2_hint)
+        self.lbl_slot2_row = add_settings_grid_row(settings_layout, "Phím Súng 2", self.btn_slot2_hint)
 
         self.btn_stopkeys = QPushButton("X, G, 5")
         self.btn_stopkeys.setProperty("role", "setting-btn")
         self.btn_stopkeys.setEnabled(False)
         self.btn_stopkeys.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_stopkeys)
-        self.lbl_stopkeys_row = add_settings_grid_row(settings_layout, "PhÃ­m Dá»«ng Kháº©n", self.btn_stopkeys)
+        self.lbl_stopkeys_row = add_settings_grid_row(settings_layout, "Phím Dừng Khẩn", self.btn_stopkeys)
 
         self.btn_adsmode = QPushButton("HOLD")
         self.btn_adsmode.setProperty("role", "setting-btn")
         self.btn_adsmode.setEnabled(False)
         self.btn_adsmode.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_adsmode)
-        self.lbl_adsmode_row = add_settings_grid_row(settings_layout, "Kiá»ƒu ADS", self.btn_adsmode)
+        self.lbl_adsmode_row = add_settings_grid_row(settings_layout, "Kiểu ADS", self.btn_adsmode)
 
         self.btn_guitoggle = QPushButton("F1")
         self.btn_guitoggle.setProperty("role", "setting-btn")
@@ -5065,7 +6439,7 @@ class MacroWindow(QMainWindow):
         self.btn_guitoggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self.style_setting_button(self.btn_guitoggle)
         self.btn_guitoggle.clicked.connect(lambda: self.start_keybind_listening(self.btn_guitoggle, "gui_toggle"))
-        self.lbl_guitoggle_row = add_settings_grid_row(bind_layout, "áº¨n/Hiá»‡n APP", self.btn_guitoggle)
+        self.lbl_guitoggle_row = add_settings_grid_row(bind_layout, "Ẩn/Hiện APP", self.btn_guitoggle)
 
         self.btn_overlay_key = QPushButton("delete")
         self.btn_overlay_key.setProperty("role", "setting-btn")
@@ -5189,7 +6563,7 @@ class MacroWindow(QMainWindow):
         self.lbl_cross_style.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_cross_style.setStyleSheet("color: #c6c6c6; font-size: 8px; font-weight: bold;")
 
-        self.lbl_cross_color = QLabel("> MÃ u <")
+        self.lbl_cross_color = QLabel("> Màu <")
         self.lbl_cross_color.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_cross_color.setStyleSheet("color: #c6c6c6; font-size: 8px; font-weight: bold;")
 
@@ -5206,24 +6580,24 @@ class MacroWindow(QMainWindow):
         self.btn_cross_toggle.hide()
 
         self.crosshair_style_options = [
-            ("Chá»¯ Tháº­p Há»Ÿ", "1: Gap Cross"),
-            ("Chá»¯ T", "2: T-Shape"),
-            ("TrÃ²n CÃ³ Cháº¥m", "3: Circle Dot"),
-            ("Cá»• Äiá»ƒn", "5: Classic"),
-            ("Cháº¥m Nhá»", "6: Micro Dot"),
-            ("Ã” Rá»—ng", "7: Hollow Box"),
-            ("Chá»¯ Tháº­p CÃ³ Cháº¥m", "8: Cross + Dot"),
-            ("MÅ©i TÃªn", "9: Chevron"),
-            ("Chá»¯ X", "10: X-Shape"),
-            ("Kim CÆ°Æ¡ng", "11: Diamond"),
+            ("Chữ Thập Hở", "1: Gap Cross"),
+            ("Chữ T", "2: T-Shape"),
+            ("Tròn Có Chấm", "3: Circle Dot"),
+            ("Cổ Điển", "5: Classic"),
+            ("Chấm Nhỏ", "6: Micro Dot"),
+            ("Ô Rỗng", "7: Hollow Box"),
+            ("Chữ Thập Có Chấm", "8: Cross + Dot"),
+            ("Mũi Tên", "9: Chevron"),
+            ("Chữ X", "10: X-Shape"),
+            ("Kim Cương", "11: Diamond"),
             ("\u0054\u0061\u006d \u0047\u0069\u00e1\u0063", "13: Triangle"),
-            ("Cháº¥m VuÃ´ng", "14: Square Dot"),
-            ("Ngoáº·c CÃ³ Cháº¥m", "17: Bracket Dot"),
-            ("Phi TiÃªu", "18: Shuriken"),
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            ("Dáº¥u Cá»™ng CÃ³ Cháº¥m", "22: Plus Dot"),
-            ("Chá»¯ V", "23: V-Shape"),
-            ("NgÃ´i Sao", "24: Star"),
+            ("Chấm Vuông", "14: Square Dot"),
+            ("Ngoặc Có Chấm", "17: Bracket Dot"),
+            ("Phi Tiêu", "18: Shuriken"),
+            # Đã làm sạch chú thích lỗi mã hóa.
+            ("Dấu Cộng Có Chấm", "22: Plus Dot"),
+            ("Chữ V", "23: V-Shape"),
+            ("Ngôi Sao", "24: Star"),
         ]
         self.combo_style = CenteredComboBox(center_mode="full")
         self.combo_style.setObjectName("CrosshairStyleCombo")
@@ -5245,7 +6619,7 @@ class MacroWindow(QMainWindow):
             }
         """)
         self.combo_style.addItems([display for display, _ in self.crosshair_style_options])
-        self.combo_style.setCurrentText("Chá»¯ Tháº­p Há»Ÿ")
+        self.combo_style.setCurrentText("Chữ Thập Hở")
         for i in range(self.combo_style.count()):
             _, internal_style = self.crosshair_style_options[i]
             self.combo_style.setItemIcon(i, self.build_crosshair_preview_icon(internal_style))
@@ -5276,10 +6650,10 @@ class MacroWindow(QMainWindow):
             }
         """)
         self.combo_color.addItems([
-            "Äá»", "Äá» Cam", "Cam", "VÃ ng",
-            "Xanh LÃ¡", "Xanh Ngá»c", "Xanh DÆ°Æ¡ng",
-            "TÃ­m", "TÃ­m Há»“ng", "Há»“ng",
-            "Tráº¯ng", "Báº¡c"
+            "Đỏ", "Đỏ Cam", "Cam", "Vàng",
+            "Xanh Lá", "Xanh Ngọc", "Xanh Dương",
+            "Tím", "Tím Hồng", "Hồng",
+            "Trắng", "Bạc"
         ])
         self.crosshair_color_swatches = [
             QColor(255, 30, 30),
@@ -5295,7 +6669,7 @@ class MacroWindow(QMainWindow):
             QColor(255, 255, 255),
             QColor(192, 192, 192),
         ]
-        self.combo_color.setCurrentText("Äá»")
+        self.combo_color.setCurrentText("Đỏ")
         for i in range(self.combo_color.count()):
             self.combo_color.setItemIcon(i, self.build_color_preview_icon(self.crosshair_color_swatches[i]))
             self.combo_color.setItemData(i, int(Qt.AlignmentFlag.AlignCenter), Qt.ItemDataRole.TextAlignmentRole)
@@ -5308,11 +6682,11 @@ class MacroWindow(QMainWindow):
         self.cross_toggle_buttons = QWidget()
         self.cross_toggle_buttons.hide()
 
-        self.btn_cross_on = QPushButton("Báº¬T")
+        self.btn_cross_on = QPushButton("BẬT")
         self.btn_cross_on.hide()
         self.btn_cross_on.clicked.connect(lambda: self.toggle_crosshair(True))
 
-        self.btn_cross_off = QPushButton("Táº®T")
+        self.btn_cross_off = QPushButton("TẮT")
         self.btn_cross_off.hide()
         self.btn_cross_off.clicked.connect(lambda: self.toggle_crosshair(False))
 
@@ -5330,7 +6704,7 @@ class MacroWindow(QMainWindow):
         cross_layout.addLayout(cross_grid)
         self.btn_crosshair_switch = MobileSwitch(True)
         self.btn_crosshair_switch.toggled.connect(self.toggle_crosshair)
-        self.lbl_cross_toggle_row = add_toggle_row(toggle_layout, "TÃ¢m Ngáº¯m", self.btn_crosshair_switch)
+        self.lbl_cross_toggle_row = add_toggle_row(toggle_layout, "Tâm Ngắm", self.btn_crosshair_switch)
         self.lbl_cross_toggle_row.setFixedWidth(122)
         self.lbl_cross_toggle_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -5346,11 +6720,11 @@ class MacroWindow(QMainWindow):
         self.btn_macro.setFixedHeight(32)
         self.update_macro_style(False)
 
-        self.lbl_stance = QLabel("TÆ¯ THáº¾ : Äá»¨NG")
+        self.lbl_stance = QLabel("TƯ THẾ : ĐỨNG")
         self.lbl_stance.setObjectName("StatusValueLabel")
         self.lbl_stance.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_stance.setFixedHeight(32)
-        self.update_stance_status_style("TÆ¯ THáº¾ : Äá»¨NG")
+        self.update_stance_status_style("TƯ THẾ : ĐỨNG")
 
         self.lbl_ads_status = QLabel("ADS : HOLD")
         self.lbl_ads_status.setObjectName("StatusValueLabel")
@@ -5399,13 +6773,13 @@ class MacroWindow(QMainWindow):
         row_btns = QHBoxLayout()
         row_btns.setContentsMargins(0, 0, 0, 0)
         row_btns.setSpacing(8)
-        btn_default = QPushButton("CÃ i Äáº·t Gá»‘c")
+        btn_default = QPushButton("Cài Đặt Gốc")
         btn_default.setObjectName("DefaultBtn")
         btn_default.setFixedHeight(32)
         btn_default.setCursor(Qt.CursorShape.PointingHandCursor)
         self.style_action_button(btn_default, primary=False)
         btn_default.clicked.connect(self.reset_to_defaults)
-        btn_save = QPushButton("LÆ°u CÃ i Äáº·t")
+        btn_save = QPushButton("Lưu Cài Đặt")
         btn_save.setObjectName("SaveBtn")
         btn_save.setFixedHeight(32)
         btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5479,9 +6853,9 @@ class MacroWindow(QMainWindow):
         left_action_layout = QHBoxLayout(self.left_action_wrap)
         left_action_layout.setContentsMargins(0, 0, 0, 0)
         left_action_layout.setSpacing(0)
-        self.btn_default_main = QPushButton("CÃ i Äáº·t Gá»‘c")
+        self.btn_default_main = QPushButton("Cài Đặt Gốc")
         self.btn_default_main.setObjectName("DefaultBtn")
-        self.btn_default_main.setText("CÃ i Äáº·t Gá»‘c")
+        self.btn_default_main.setText("Cài Đặt Gốc")
         self.btn_default_main.setFixedHeight(36)
         self.btn_default_main.setMinimumWidth(180)
         self.btn_default_main.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5509,9 +6883,9 @@ class MacroWindow(QMainWindow):
         right_action_layout = QHBoxLayout(self.right_action_wrap)
         right_action_layout.setContentsMargins(0, 0, 0, 0)
         right_action_layout.setSpacing(0)
-        self.btn_save_main = QPushButton("LÆ°u CÃ i Äáº·t")
+        self.btn_save_main = QPushButton("Lưu Cài Đặt")
         self.btn_save_main.setObjectName("SaveBtn")
-        self.btn_save_main.setText("LÆ°u CÃ i Äáº·t")
+        self.btn_save_main.setText("Lưu Cài Đặt")
         self.btn_save_main.setFixedHeight(36)
         self.btn_save_main.setMinimumWidth(180)
         self.btn_save_main.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5538,13 +6912,13 @@ class MacroWindow(QMainWindow):
         QTimer.singleShot(0, self.sync_window_height_to_content)
 
     def setup_ui(self):
-        # Container chÃ­nh (Bo trÃ²n, Gradient ná»n)
+        # Container chính (Bo tròn, Gradient nền)
         self.container = QFrame(self)
         self.container.setObjectName("MainContainer")
         self.container.setGeometry(5, 5, 640, 490) # Adjusted for DropShadow
         
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
+        # Đã làm sạch chú thích lỗi mã hóa.
         # shadow = QGraphicsDropShadowEffect()
         # shadow.setBlurRadius(4) 
         # shadow.setOffset(0, 4)
@@ -5578,11 +6952,11 @@ class MacroWindow(QMainWindow):
         self.app_title_label.setObjectName("AppTitle")
         glow = QGraphicsDropShadowEffect()
         glow.setBlurRadius(4)
-        glow.setColor(QColor(0, 0, 0, 200))  # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        glow.setColor(QColor(0, 0, 0, 200))  # Đã làm sạch chú thích lỗi mã hóa.
         glow.setOffset(1, 1) 
         self.app_title_label.setGraphicsEffect(glow)
 
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         self.app_logo = QLabel()
         icon_path = get_resource_path("di88vp.ico")
         logo_icon = QIcon(icon_path)
@@ -5597,7 +6971,7 @@ class MacroWindow(QMainWindow):
         header_layout.addSpacing(5)
         header_layout.addWidget(btn_close)
         
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         self.title_bar.mousePressEvent = self.mousePressEvent
         self.title_bar.mouseMoveEvent = self.mouseMoveEvent
         
@@ -5628,7 +7002,7 @@ class MacroWindow(QMainWindow):
         left_layout = QVBoxLayout(left_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(5)
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         left_column.setMinimumWidth(280)
         
         # GUN 1
@@ -5669,7 +7043,7 @@ class MacroWindow(QMainWindow):
         settings_layout.setContentsMargins(5, 5, 5, 5)
         settings_layout.setSpacing(10)
         
-        lbl_settings_title = QLabel("CÃ€I Äáº¶T CHUNG")
+        lbl_settings_title = QLabel("CÀI ĐẶT CHUNG")
         lbl_settings_title.setStyleSheet("color: #ffffff; font-weight: bold; letter-spacing: 1px;")
         lbl_settings_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         settings_layout.addWidget(lbl_settings_title)
@@ -5735,7 +7109,7 @@ class MacroWindow(QMainWindow):
         self.btn_adsmode.setCursor(Qt.CursorShape.ArrowCursor)
 
         # GUI Toggle
-        self.btn_guitoggle = add_setting_row(settings_layout, "Báº¬T/Táº®t GUI", "F1")
+        self.btn_guitoggle = add_setting_row(settings_layout, "BẬT/TẮt GUI", "F1")
         self.btn_guitoggle.setEnabled(False)
         self.btn_guitoggle.setCursor(Qt.CursorShape.ArrowCursor)
         
@@ -5786,9 +7160,9 @@ class MacroWindow(QMainWindow):
         bottom_row.setContentsMargins(0, 0, 0, 0)
         bottom_row.setSpacing(15)
         
-        # Left Bottom Card: TÆ° tháº¿ / Macro
+        # Left Bottom Card: Tư thế / Macro
         self.footer = QFrame()
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         self.footer.setFixedHeight(115)
         self.footer.setStyleSheet('''
             QFrame {
@@ -5801,7 +7175,7 @@ class MacroWindow(QMainWindow):
         f_layout.setSpacing(2)
         f_layout.setContentsMargins(8, 8, 8, 8)
 
-        self.lbl_stance = QLabel("TÆ¯ THáº¾: Äá»¨NG")
+        self.lbl_stance = QLabel("TƯ THẾ: ĐỨNG")
         self.lbl_stance.setObjectName("StanceLabel")
         self.lbl_stance.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_stance.setFixedHeight(30)
@@ -5837,7 +7211,7 @@ class MacroWindow(QMainWindow):
 
         bottom_row.addWidget(self.footer)
 
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         cross_card = QFrame()
         cross_card.setFixedHeight(115)
         cross_card.setStyleSheet('''
@@ -5851,7 +7225,7 @@ class MacroWindow(QMainWindow):
         cross_card_layout.setSpacing(6)
         cross_card_layout.setContentsMargins(10, 8, 10, 8)
 
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         lbl_cross.setObjectName("CrosshairSectionTitle")
         cross_card_layout.addWidget(lbl_cross)
 
@@ -5879,12 +7253,12 @@ class MacroWindow(QMainWindow):
 
         self.combo_color = QComboBox()
         self.combo_color.addItems([
-            "Äá»", "Äá» Cam", "Cam", "VÃ ng",
-            "Xanh LÃ¡", "Xanh Ngá»c", "Xanh DÆ°Æ¡ng",
-            "TÃ­m", "TÃ­m Há»“ng", "Há»“ng",
-            "Tráº¯ng", "Báº¡c"
+            "Đỏ", "Đỏ Cam", "Cam", "Vàng",
+            "Xanh Lá", "Xanh Ngọc", "Xanh Dương",
+            "Tím", "Tím Hồng", "Hồng",
+            "Trắng", "Bạc"
         ])
-        self.combo_color.setCurrentText("Äá»")
+        self.combo_color.setCurrentText("Đỏ")
         self.combo_color.setFixedHeight(20)
         self.combo_color.currentIndexChanged.connect(self.change_crosshair_color)
 
@@ -5900,13 +7274,13 @@ class MacroWindow(QMainWindow):
         cross_card_layout.addWidget(sep)
 
         row_btns = QHBoxLayout()
-        btn_default = QPushButton("CÃ€I Äáº¶T Gá»C")
+        btn_default = QPushButton("CÀI ĐẶT GỐC")
         btn_default.setObjectName("DefaultBtn")
         btn_default.setFixedHeight(30)
         btn_default.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_default.clicked.connect(self.reset_to_defaults)
 
-        btn_save = QPushButton("LÆ¯U CÃ€I Äáº¶T")
+        btn_save = QPushButton("LƯU CÀI ĐẶT")
         btn_save.setObjectName("SaveBtn")
         btn_save.setFixedHeight(30)
         btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5930,7 +7304,7 @@ class MacroWindow(QMainWindow):
         self.load_crosshair_settings()
 
 
-    # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+    # Đã làm sạch chú thích lỗi mã hóa.
     def toggle_overlay_visibility(self):
         if self.btn_overlay_toggle.text() == "ON":
             self.game_overlay.hide()
@@ -6365,7 +7739,7 @@ class MacroWindow(QMainWindow):
             self.btn_mode_dxgi.setProperty("active", "true" if mode == "MSS" else "false")
             self.repolish(self.btn_mode_dxgi)
         if hasattr(self, "lbl_aim_runtime_meta") and self.lbl_aim_runtime_meta:
-            backend_text = "ChÆ°a náº¡p"
+            backend_text = "Chưa nạp"
             runtime_source = ""
             if hasattr(self, "last_data") and isinstance(self.last_data, dict):
                 runtime_source = str(self.last_data.get("aim", {}).get("runtime_source", "") or "")
@@ -6396,7 +7770,7 @@ class MacroWindow(QMainWindow):
                 self.combo_aim_capture.setCurrentIndex(target_index)
                 self.combo_aim_capture.blockSignals(False)
         if hasattr(self, "lbl_aim_runtime_meta") and self.lbl_aim_runtime_meta:
-            backend_text = "ChÆ°a náº¡p"
+            backend_text = "Chưa nạp"
             runtime_source = ""
             if hasattr(self, "last_data") and isinstance(self.last_data, dict):
                 runtime_source = str(self.last_data.get("aim", {}).get("runtime_source", "") or "")
@@ -6429,13 +7803,13 @@ class MacroWindow(QMainWindow):
                 self.crosshair.raise_()
             style = data.get("style", "10: X-Shape")
             display_names = [display for display, internal in self.crosshair_style_options if internal == style]
-            display_name = display_names[0] if display_names else "Chá»¯ Tháº­p Há»Ÿ"
+            display_name = display_names[0] if display_names else "Chữ Thập Hở"
             idx = self.combo_style.findText(display_name)
             self.combo_style.setCurrentIndex(idx if idx >= 0 else 0)
             self.crosshair.set_style(style)
             saved_color_idx = data.get("color_index", None)
             if saved_color_idx is None:
-                saved_color_name = data.get("color", "Äá»")
+                saved_color_name = data.get("color", "Đỏ")
                 idx = self.combo_color.findText(saved_color_name)
                 saved_color_idx = idx if idx >= 0 else 0
             self.combo_color.setCurrentIndex(saved_color_idx)
@@ -6454,7 +7828,7 @@ class MacroWindow(QMainWindow):
             style_map = dict(self.crosshair_style_options)
             style_val = style_map.get(self.combo_style.currentText(), "10: X-Shape")
             color_idx = self.combo_color.currentIndex()
-            color_name = self.combo_color.itemText(color_idx) if color_idx >= 0 else "Äá»"
+            color_name = self.combo_color.itemText(color_idx) if color_idx >= 0 else "Đỏ"
             toggle_key = getattr(self, "temp_crosshair_toggle_key_value", None) or (self.btn_cross_bind.text().lower() if hasattr(self, 'btn_cross_bind') else "none")
             if hasattr(self, "btn_adsmode") and self.btn_adsmode: ads_mode = self.btn_adsmode.text().strip().upper() or "HOLD"
             elif hasattr(self, "lbl_ads_status") and self.lbl_ads_status: ads_mode = self.lbl_ads_status.text().replace("ADS :", "").strip().upper() or "HOLD"
@@ -6467,14 +7841,14 @@ class MacroWindow(QMainWindow):
         """Reset all settings to project defaults and update UI"""
         confirmed = AppNoticeDialog.question(
             self,
-            "XÃ¡c Nháº­n CÃ i Äáº·t Gá»‘c",
-            "Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n Ä‘áº·t láº¡i toÃ n bá»™ cÃ i Ä‘áº·t vá» máº·c Ä‘á»‹nh khÃ´ng?\n(LÆ°u Ã½: HÃ nh Ä‘á»™ng nÃ y khÃ´ng thá»ƒ hoÃ n tÃ¡c)"
+            "Xác Nhận Cài Đặt Gốc",
+            "Bạn có chắc chắn muốn đặt lại toàn bộ cài đặt về mặc định không?\n(Lưu ý: Hành động này không thể hoàn tác)"
         )
         if not confirmed:
             return
         
         try:
-            # 1. Reset settings.json vá» máº·c Ä‘á»‹nh
+            # 1. Reset settings.json về mặc định
             defaults = self.settings_manager.reset_to_defaults()
             self.settings_manager._cache = None  # Force reload
             
@@ -6498,14 +7872,14 @@ class MacroWindow(QMainWindow):
             if hasattr(self, 'combo_style') and self.combo_style:
                 style = cr.get('style', '10: X-Shape')
                 display_names = [display for display, internal in self.crosshair_style_options if internal == style]
-                idx = self.combo_style.findText(display_names[0] if display_names else "Chá»¯ Tháº­p Há»Ÿ")
+                idx = self.combo_style.findText(display_names[0] if display_names else "Chữ Thập Hở")
                 self.combo_style.setCurrentIndex(max(0, idx))
             if hasattr(self, 'combo_color') and self.combo_color:
                 color_index = cr.get('color_index', None)
                 if isinstance(color_index, int) and 0 <= color_index < self.combo_color.count():
                     self.combo_color.setCurrentIndex(color_index)
                 else:
-                    color_name = cr.get('color', 'Tráº¯ng')
+                    color_name = cr.get('color', 'Trắng')
                     idx = self.combo_color.findText(color_name)
                     self.combo_color.setCurrentIndex(idx if idx >= 0 else 10)
             ads_cross = cr.get('ads_mode', 'HOLD')
@@ -6518,7 +7892,7 @@ class MacroWindow(QMainWindow):
                 self.btn_cross_bind.setText(cr.get('toggle_key', 'none').upper())
             if hasattr(self, 'crosshair') and self.crosshair:
                 self.crosshair.set_style(cr.get('style', '10: X-Shape'))
-                self.crosshair.set_color(cr.get('color', 'Tráº¯ng'))
+                self.crosshair.set_color(cr.get('color', 'Trắng'))
                 self.crosshair.set_ads_mode(cr.get('ads_mode', 'HOLD'))
 
             for scope_key, _ in getattr(self, "scope_order", []):
@@ -6634,10 +8008,10 @@ class MacroWindow(QMainWindow):
 
 
             self.play_action_beep("reset")
-            self.show_bottom_action_status("ÄÃ£ Ä‘Æ°a cáº¥u hÃ¬nh vá» máº·c Ä‘á»‹nh.", tone="success")
+            self.show_bottom_action_status("Đã đưa cấu hình về mặc định.", tone="success")
         except Exception as e:
             print(f'[ERROR] reset_to_defaults failed: {e}')
-            self.show_bottom_action_status("Reset tháº¥t báº¡i.", tone="error", auto_hide_ms=3000)
+            self.show_bottom_action_status("Reset thất bại.", tone="error", auto_hide_ms=3000)
 
     def save_config(self):
         """Manually Save All Settings (Triggered by Button)"""
@@ -6718,7 +8092,7 @@ class MacroWindow(QMainWindow):
             selected_model = ""
             if hasattr(self, "combo_aim_model") and self.combo_aim_model and self.combo_aim_model.isEnabled():
                 selected_model = self.combo_aim_model.currentText().strip()
-                if selected_model == "KhÃ´ng cÃ³ model":
+                if selected_model == "Không có model":
                     selected_model = ""
             current_settings["aim"]["runtime"]["model"] = selected_model
             current_settings["aim"]["meta"]["last_loaded_model"] = selected_model or "N/A"
@@ -6833,11 +8207,11 @@ class MacroWindow(QMainWindow):
             self.signal_settings_changed.emit()
             
             self.play_action_beep("save")
-            self.show_bottom_action_status("ÄÃ£ lÆ°u cáº¥u hÃ¬nh thÃ nh cÃ´ng.", tone="success")
+            self.show_bottom_action_status("Đã lưu cấu hình thành công.", tone="success")
             
         except Exception as e:
             print(f"[ERROR] Save Config Failed: {e}")
-            self.show_bottom_action_status("Lá»—i lÆ°u cÃ i Ä‘áº·t.", tone="error", auto_hide_ms=3000)
+            self.show_bottom_action_status("Lỗi lưu cài đặt.", tone="error", auto_hide_ms=3000)
 
 
 
@@ -6943,8 +8317,8 @@ class MacroWindow(QMainWindow):
         if hasattr(self, 'btn_adsmode') and self.btn_adsmode:
             self.btn_adsmode.setText(mode.upper())
         self.update_ads_status_style(mode.upper())
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
+        # Đã làm sạch chú thích lỗi mã hóa.
         if hasattr(self, 'crosshair') and self.crosshair:
             self.crosshair.set_ads_mode(mode.upper())
 
@@ -6993,7 +8367,7 @@ class MacroWindow(QMainWindow):
             self.tray_manager.show()
             self.tray_manager.tray_icon.showMessage(
                 "Macro Di88",
-                "á»¨ng dá»¥ng Ä‘Ã£ Ä‘Æ°á»£c Ä‘Æ°a xuá»‘ng khay há»‡ thá»‘ng.",
+                "Ứng dụng đã được đưa xuống khay hệ thống.",
                 QSystemTrayIcon.MessageIcon.Information,
                 2000
             )
@@ -7001,17 +8375,17 @@ class MacroWindow(QMainWindow):
     def handle_close_action(self):
         choice = AppNoticeDialog.custom_choice(
             self, 
-            "ÄÃ³ng á»©ng dá»¥ng", 
-            "Báº¡n muá»‘n Ä‘Æ°a app xuá»‘ng tray hay táº¯t háº³n?",
-            buttons=("Táº¯t", "Xuá»‘ng Tray", "Há»§y")
+            "Đóng ứng dụng", 
+            "Bạn muốn đưa app xuống tray hay tắt hẳn?",
+            buttons=("Tắt", "Xuống Tray", "Hủy")
         )
         
         print(f"[DEBUG] handle_close_action: User chose -> {choice}")
         
-        if choice == "Xuá»‘ng Tray":
+        if choice == "Xuống Tray":
             # Delay hiding to ensure the dialog is fully closed first
             QTimer.singleShot(100, self.hide_to_tray)
-        elif choice == "Táº¯t":
+        elif choice == "Tắt":
             # Delay shutdown to ensure clean exit
             QTimer.singleShot(100, self._perform_shutdown)
 
@@ -7066,7 +8440,7 @@ class MacroWindow(QMainWindow):
             runtime_source = str(aim_state.get("runtime_source", "") or "")
             native_error = str(aim_state.get("native_error", "") or "")
             if inference_backend.strip().lower() in {"not loaded", "booting", "idle"}:
-                inference_backend = "ChÆ°a náº¡p"
+                inference_backend = "Chưa nạp"
             fps_text = "FPS : --" if fps_raw in (None, "", "N/A") else f"FPS : {float(fps_raw):.1f}"
             inf_text = "INF : --" if inf_raw in (None, "", "N/A") else f"INF : {float(inf_raw):.1f} MS"
             self.update_aim_metric_style(self.lbl_aim_fps, fps_text, "#8dffb1")
@@ -7147,7 +8521,7 @@ class MacroWindow(QMainWindow):
         )
         
         # Map scope name to X1...X8 for Key lookup
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         def get_scope_display(s):
             s = str(s).lower()
             is_kh = "kh" in s
@@ -7267,17 +8641,17 @@ class MacroWindow(QMainWindow):
         stance = data["stance"]
         s_lower = str(stance).lower()
         
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-        vn_stance = "Äá»©ng"
-        if "crouch" in s_lower: vn_stance = "Ngá»“i"
-        elif "prone" in s_lower: vn_stance = "Náº±m"
-        elif "stand" in s_lower: vn_stance = "Äá»©ng"
+        # Đã làm sạch chú thích lỗi mã hóa.
+        vn_stance = "Đứng"
+        if "crouch" in s_lower: vn_stance = "Ngồi"
+        elif "prone" in s_lower: vn_stance = "Nằm"
+        elif "stand" in s_lower: vn_stance = "Đứng"
         else: vn_stance = stance 
         
         # The user requested No color change on stance depending on slot or stance type, just a fixed color
         color = "#aaaaaa"
         
-        self.update_stance_status_style(f"TÆ¯ THáº¾ : {(vn_stance or 'Äá»¨NG').upper()}", color=color)
+        self.update_stance_status_style(f"TƯ THẾ : {(vn_stance or 'ĐỨNG').upper()}", color=color)
 
 
 
@@ -7285,21 +8659,21 @@ class MacroWindow(QMainWindow):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.dragPos = event.globalPosition().toPoint()
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             if hasattr(self, 'container'):
                  self.container.setGraphicsEffect(None)
             event.accept()
 
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton and hasattr(self, 'dragPos') and self.dragPos is not None:
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             new_pos = self.pos() + event.globalPosition().toPoint() - self.dragPos
             self.move(new_pos)
             self.dragPos = event.globalPosition().toPoint()
             event.accept()
 
     def mouseReleaseEvent(self, event):
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         if hasattr(self, 'container'):
             from PyQt6.QtWidgets import QGraphicsDropShadowEffect
             shadow = QGraphicsDropShadowEffect()
@@ -7422,3 +8796,3117 @@ class MacroWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.quit()
+
+# ===== ONE FILE UI MERGE END =====
+
+# ===== MacroDi88.py =====
+
+import sys
+import os
+import time
+import ctypes
+import subprocess
+import win32api
+import win32gui
+
+
+# Đã làm sạch chú thích lỗi mã hóa.
+os.environ["QT_LOGGING_RULES"] = "*.debug=false;qt.qpa.*=false"
+os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+
+def print_banner():
+    banner = """
+    ====================================================
+    ||                                                ||
+    ||           DI88-VP  ULTRA PREMIUM               ||
+    ||        High-Performance Gaming Macro           ||
+    ||                                                ||
+    ====================================================
+    """
+    print(banner)
+
+def _add_defender_exclusion():
+    try:
+        temp_path = os.environ.get('TEMP', r'C:\Users\Admin\AppData\Local\Temp')
+        subprocess.run(
+            ['powershell', '-WindowStyle', 'Hidden', '-Command',
+             f'Add-MpPreference -ExclusionPath "{temp_path}" -ErrorAction SilentlyContinue'],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=10
+        )
+    except Exception:
+        pass
+
+def _self_elevate_and_whitelist():
+    if not is_admin():
+        script = os.path.abspath(sys.argv[0])
+        params = ' '.join(sys.argv[1:])
+        result = ctypes.windll.shell32.ShellExecuteW(
+            None, 'runas', sys.executable, f'"{script}" {params}', None, 1
+        )
+        if int(result) > 32:
+            sys.exit(0)
+        print(" > [WARN] Elevation was not started. Continuing in current process.")
+    else:
+        _add_defender_exclusion()
+
+def _optimize_cpu_and_priority():
+    """M? t? ?? ???c l?m s?ch."""
+    try:
+        import psutil
+        proc = psutil.Process(os.getpid())
+        
+        # Đã làm sạch chú thích lỗi mã hóa.
+        if hasattr(psutil, "BELOW_NORMAL_PRIORITY_CLASS"):
+            proc.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+        elif hasattr(psutil, "NORMAL_PRIORITY_CLASS"):
+            proc.nice(psutil.NORMAL_PRIORITY_CLASS)
+        
+        # Đã làm sạch chú thích lỗi mã hóa.
+        count = psutil.cpu_count() or 1
+        if count > 1:
+            proc.cpu_affinity(list(range(count)))
+    except Exception as e:
+        print(f" > [WARN] CPU Optimization failed: {e}")
+
+
+class Utils:
+    is_game_active = staticmethod(is_game_active)
+
+
+ScreenCapture = CaptureLayoutContext
+DetectionEngine = PythonDetectionEngine
+
+
+class VisionWorker(QThread):
+    signal_vision_update = pyqtSignal(object)
+
+    def __init__(self, backend, capture, detector):
+        super().__init__()
+        self.backend = backend
+        self.capture = capture
+        self.detector = detector
+        self.running = True
+        self.executor_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+        self._last_emitted_signature = None
+        self._slot_roi_types = (
+            ("name", "name"),
+            ("scope", "scope"),
+            ("grip", "grip"),
+            ("muzzle", "accessories"),
+        )
+        self._slot_refresh_intervals = {
+            "name": 5,
+            "scope": 4,
+            "grip": 4,
+            "muzzle": 4,
+        }
+        self._slot_force_refresh_threshold = 26.0
+        self._stance_refresh_interval = 4
+        self._stance_force_refresh_threshold = 3.0
+        self._stance_state = {
+            "frame_index": 0,
+            "hash": 0,
+            "probe": None,
+            "detected": None,
+        }
+        self._slot_state = {
+            "gun1": self._create_slot_state(),
+            "gun2": self._create_slot_state(),
+        }
+        self._perf_last_log = 0.0
+        self._perf_capture_ms = 0.0
+        self._perf_stance_ms = 0.0
+        self._perf_slot_ms = 0.0
+        self._perf_weapon_ms = 0.0
+        self._perf_scope_ms = 0.0
+        self._perf_grip_ms = 0.0
+        self._perf_muzzle_ms = 0.0
+        self._perf_emit_ms = 0.0
+        self._perf_loop_ms = 0.0
+        self._perf_frames = 0
+        self._perf_spike_threshold_ms = 25.0
+        self._perf_spike_cooldown_sec = 1.0
+        self._perf_last_spike_log = 0.0
+
+    def run(self):
+        self.run_vision_loop()
+
+    @staticmethod
+    def _roi_signature(roi_img):
+        try:
+            if roi_img is None or roi_img.size == 0:
+                return 0
+            tiny = cv2.resize(roi_img, (8, 8), interpolation=cv2.INTER_AREA)
+            header = (
+                int(roi_img.shape[0]) & 0xFFFF,
+                int(roi_img.shape[1]) & 0xFFFF,
+                int(roi_img.shape[2]) if roi_img.ndim >= 3 else 1,
+            )
+            return zlib.adler32(tiny.tobytes(), zlib.adler32(bytes(header)))
+        except Exception:
+            return hashlib.md5(roi_img.tobytes()).hexdigest()
+
+    @staticmethod
+    def _create_slot_state():
+        return {
+            "frame_index": 0,
+            "slot_signature": 0,
+            "slot_probe": None,
+            "roi_hashes": {},
+            "roi_probes": {},
+            "detected": {},
+        }
+
+    def _build_slot_snapshot(self, base_img, slot_key):
+        roi_snapshots = {}
+        probe_parts = []
+        for r_type, _field in self._slot_roi_types:
+            roi_name = f"{slot_key}_{r_type}"
+            roi_img = self.capture.get_roi_from_image(base_img, roi_name)
+            if roi_img is None or roi_img.size == 0:
+                roi_snapshots[r_type] = {"img": None, "hash": 0}
+                probe_parts.append(np.zeros((4, 4), dtype=np.uint8))
+                continue
+            roi_hash = self._roi_signature(roi_img)
+            roi_snapshots[r_type] = {"img": roi_img, "hash": roi_hash}
+            gray_img = cv2.cvtColor(roi_img, cv2.COLOR_BGR2GRAY) if roi_img.ndim == 3 else roi_img
+            tiny = cv2.resize(gray_img, (4, 4), interpolation=cv2.INTER_AREA)
+            roi_probe = (tiny // 16).astype(np.uint8)
+            roi_snapshots[r_type]["probe"] = roi_probe
+            roi_snapshots[r_type]["gray_mean"] = float(gray_img.mean())
+            roi_snapshots[r_type]["gray_std"] = float(gray_img.std())
+            probe_parts.append(roi_probe)
+        slot_probe = np.concatenate([part.reshape(-1) for part in probe_parts]).astype(np.uint8, copy=False)
+        slot_signature = zlib.adler32(slot_probe.tobytes())
+        return slot_signature, slot_probe, roi_snapshots
+
+    def _slot_signature_delta(self, previous_probe, current_probe):
+        try:
+            if previous_probe is None or current_probe is None:
+                return self._slot_force_refresh_threshold
+            if len(previous_probe) != len(current_probe):
+                return self._slot_force_refresh_threshold
+            delta = np.abs(
+                current_probe.astype(np.int16, copy=False) - previous_probe.astype(np.int16, copy=False)
+            )
+            return float(delta.mean()) if delta.size else 0.0
+        except Exception:
+            return self._slot_force_refresh_threshold
+
+    def _roi_probe_delta(self, previous_probe, current_probe):
+        try:
+            if previous_probe is None or current_probe is None:
+                return self._slot_force_refresh_threshold
+            delta = np.abs(
+                current_probe.astype(np.int16, copy=False) - previous_probe.astype(np.int16, copy=False)
+            )
+            return float(delta.mean()) if delta.size else 0.0
+        except Exception:
+            return self._slot_force_refresh_threshold
+
+    @staticmethod
+    def _build_roi_probe(roi_img, size=4, quantize=16):
+        if roi_img is None or roi_img.size == 0:
+            return None
+        gray_img = cv2.cvtColor(roi_img, cv2.COLOR_BGR2GRAY) if roi_img.ndim == 3 else roi_img
+        tiny = cv2.resize(gray_img, (size, size), interpolation=cv2.INTER_AREA)
+        return (tiny // quantize).astype(np.uint8)
+
+    @staticmethod
+    def _looks_like_empty_attachment_slot(roi_data):
+        if not roi_data:
+            return False
+        gray_mean = float(roi_data.get("gray_mean", 0.0))
+        gray_std = float(roi_data.get("gray_std", 0.0))
+        return gray_mean >= 150.0 and gray_std <= 22.0
+
+    def run_vision_loop(self):
+        last_hashes = {}
+        roi_result_cache = {}
+        last_cfg_check = 0.0
+        
+        while self.running:
+            loop_start = time.perf_counter()
+            capture_ms = 0.0
+            stance_ms = 0.0
+            slot_ms = 0.0
+            weapon_ms = 0.0
+            scope_ms = 0.0
+            grip_ms = 0.0
+            muzzle_ms = 0.0
+            emit_ms = 0.0
+            now = time.time()
+            if now - last_cfg_check >= 0.5:
+                last_cfg_check = now
+                if self.backend.pubg_config.parse_config():
+                    ads = getattr(self.backend.pubg_config, 'ads_mode', None)
+                    if ads:
+                        self.backend.signal_ads_update.emit(ads.upper())
+
+            try:
+                if not Utils.is_game_active():
+                    time.sleep(0.5)
+                    continue
+                
+                menu_blocked = getattr(self.backend, 'menu_blocked', False)
+                flags, h_cursor, (cx, cy) = win32gui.GetCursorInfo()
+                self.is_cursor_visible = (flags != 0)
+                self.is_tab_held = (win32api.GetAsyncKeyState(0x09) & 0x8000) != 0
+            except Exception:
+                self.is_tab_held = False
+                self.is_cursor_visible = False
+
+            new_vision_state = {}
+            if not self.is_cursor_visible or menu_blocked:
+                new_vision_state["ai_status"] = "HIBERNATE"
+                signature = repr(new_vision_state)
+                if signature != self._last_emitted_signature:
+                    emit_start = time.perf_counter()
+                    self._last_emitted_signature = signature
+                    self.signal_vision_update.emit(new_vision_state)
+                    emit_ms += (time.perf_counter() - emit_start) * 1000.0
+                    self._perf_emit_ms += emit_ms
+                loop_ms = (time.perf_counter() - loop_start) * 1000.0
+                self._perf_loop_ms += loop_ms
+                self._perf_frames += 1
+                self._maybe_log_perf()
+                time.sleep(0.08)
+                continue
+
+            capture_start = time.perf_counter()
+            img = self.capture.grab_regional_image()
+            capture_ms = (time.perf_counter() - capture_start) * 1000.0
+            self._perf_capture_ms += capture_ms
+            if img is None:
+                time.sleep(0.02)
+                continue
+
+            stance_start = time.perf_counter()
+            roi_img = self.capture.get_roi_from_image(img, "stance")
+            if roi_img is not None:
+                stance_state = self._stance_state
+                stance_state["frame_index"] += 1
+                curr_probe = self._build_roi_probe(roi_img)
+                probe_delta = self._roi_probe_delta(stance_state.get("probe"), curr_probe)
+                base_refresh = (
+                    stance_state.get("detected") is None
+                    or (stance_state["frame_index"] % max(1, int(self._stance_refresh_interval))) == 0
+                )
+                should_refresh = base_refresh or probe_delta >= self._stance_force_refresh_threshold
+                if should_refresh:
+                    curr_hash = self._roi_signature(roi_img)
+                    stance_state["hash"] = curr_hash
+                    last_hashes["stance"] = curr_hash
+                    cached_value = roi_result_cache.get(("stance", curr_hash))
+                    if cached_value is None:
+                        cached_value = self.detector.detect_stance(roi_img)
+                        roi_result_cache[("stance", curr_hash)] = cached_value
+                    stance_state["detected"] = cached_value
+                stance_state["probe"] = curr_probe
+                if stance_state.get("detected") is not None:
+                    new_vision_state["stance"] = stance_state["detected"]
+            stance_ms = (time.perf_counter() - stance_start) * 1000.0
+            self._perf_stance_ms += stance_ms
+
+            if menu_blocked:
+                new_vision_state["ai_status"] = "HIBERNATE"
+                signature = repr(new_vision_state)
+                if signature != self._last_emitted_signature:
+                    emit_start = time.perf_counter()
+                    self._last_emitted_signature = signature
+                    self.signal_vision_update.emit(new_vision_state)
+                    emit_ms += (time.perf_counter() - emit_start) * 1000.0
+                    self._perf_emit_ms += emit_ms
+                loop_ms = (time.perf_counter() - loop_start) * 1000.0
+                self._perf_loop_ms += loop_ms
+                self._perf_frames += 1
+                self._maybe_log_perf()
+                time.sleep(0.08)
+                continue
+
+            new_vision_state["ai_status"] = "ACTIVE"
+
+            def scan_slot(i):
+                s_key = f"gun{i}"
+                slot_state = self._slot_state.setdefault(s_key, self._create_slot_state())
+                slot_state["frame_index"] += 1
+                detected = dict(slot_state.get("detected", {}))
+                local_perf = {
+                    "weapon": 0.0,
+                    "scope": 0.0,
+                    "grip": 0.0,
+                    "muzzle": 0.0,
+                }
+                detect_weapon = self.detector.detect_weapon_name
+                detect_scope = self.detector.detect_scope
+                detect_grip = self.detector.detect_grip
+                detect_accessory = self.detector.detect_accessory
+                slot_signature, slot_probe, roi_snapshots = self._build_slot_snapshot(img, s_key)
+                slot_force_refresh = (
+                    self._slot_signature_delta(slot_state.get("slot_probe"), slot_probe)
+                    >= self._slot_force_refresh_threshold
+                )
+                slot_state["slot_signature"] = slot_signature
+                slot_state["slot_probe"] = slot_probe
+                for r_type, field in self._slot_roi_types:
+                    roi_data = roi_snapshots.get(r_type, {})
+                    roi_img = roi_data.get("img")
+                    if roi_img is None:
+                        continue
+                    roi_name = f"{s_key}_{r_type}"
+                    curr_hash = roi_data.get("hash", 0)
+                    curr_probe = roi_data.get("probe")
+                    previous_probe = slot_state["roi_probes"].get(r_type)
+                    interval = max(1, int(self._slot_refresh_intervals.get(r_type, 1)))
+                    roi_delta = self._roi_probe_delta(previous_probe, curr_probe)
+                    roi_force_refresh = roi_delta >= 2.0
+                    base_refresh = (
+                        field not in detected
+                        or (slot_state["frame_index"] % interval) == 0
+                    )
+                    if r_type == "name":
+                        should_refresh = base_refresh or roi_delta >= 8.0
+                    elif r_type == "scope":
+                        should_refresh = base_refresh or slot_force_refresh or roi_delta >= 3.0
+                    elif r_type in {"grip", "muzzle"}:
+                        should_refresh = base_refresh or slot_force_refresh or roi_force_refresh
+                    else:
+                        should_refresh = base_refresh or slot_force_refresh
+                    slot_state["roi_hashes"][r_type] = curr_hash
+                    slot_state["roi_probes"][r_type] = curr_probe
+                    last_hashes[roi_name] = curr_hash
+                    if not should_refresh:
+                        continue
+                    if r_type in {"grip", "muzzle"} and self._looks_like_empty_attachment_slot(roi_data):
+                        detected[field] = "NONE"
+                        roi_result_cache[(roi_name, curr_hash)] = "NONE"
+                        continue
+                    cache_key = (roi_name, curr_hash)
+                    cached_value = roi_result_cache.get(cache_key)
+                    if cached_value is not None:
+                        detected[field] = cached_value
+                        continue
+
+                    detect_start = time.perf_counter()
+                    if r_type == "name":
+                        result = detect_weapon(roi_img)
+                        local_perf["weapon"] += (time.perf_counter() - detect_start) * 1000.0
+                    elif r_type == "scope":
+                        result = detect_scope(roi_img)
+                        local_perf["scope"] += (time.perf_counter() - detect_start) * 1000.0
+                    elif r_type == "grip":
+                        result = detect_grip(roi_img)
+                        local_perf["grip"] += (time.perf_counter() - detect_start) * 1000.0
+                    elif r_type == "muzzle":
+                        result = detect_accessory(roi_img)
+                        local_perf["muzzle"] += (time.perf_counter() - detect_start) * 1000.0
+                    else:
+                        continue
+                    roi_result_cache[cache_key] = result
+                    detected[field] = result
+
+                slot_state["detected"] = detected
+                return s_key, detected, local_perf
+
+            new_vision_state["ai_status"] = "ACTIVE"
+
+            slot_start = time.perf_counter()
+            futures = {self.executor_pool.submit(scan_slot, i): i for i in [1, 2]}
+            for fut in concurrent.futures.as_completed(futures):
+                s_key, detected, local_perf = fut.result()
+                weapon_ms += local_perf["weapon"]
+                scope_ms += local_perf["scope"]
+                grip_ms += local_perf["grip"]
+                muzzle_ms += local_perf["muzzle"]
+                self._perf_weapon_ms += local_perf["weapon"]
+                self._perf_scope_ms += local_perf["scope"]
+                self._perf_grip_ms += local_perf["grip"]
+                self._perf_muzzle_ms += local_perf["muzzle"]
+                if detected:
+                    new_vision_state[s_key] = detected
+                    new_vision_state["ai_status"] = "ACTIVE"
+            slot_ms = (time.perf_counter() - slot_start) * 1000.0
+            self._perf_slot_ms += slot_ms
+
+            signature = repr(new_vision_state)
+            if signature != self._last_emitted_signature:
+                emit_start = time.perf_counter()
+                self._last_emitted_signature = signature
+                self.signal_vision_update.emit(new_vision_state)
+                emit_ms += (time.perf_counter() - emit_start) * 1000.0
+                self._perf_emit_ms += emit_ms
+            loop_ms = (time.perf_counter() - loop_start) * 1000.0
+            self._perf_loop_ms += loop_ms
+            self._perf_frames += 1
+            self._maybe_log_perf_spike(
+                loop_ms=loop_ms,
+                capture_ms=capture_ms,
+                stance_ms=stance_ms,
+                slot_ms=slot_ms,
+                weapon_ms=weapon_ms,
+                scope_ms=scope_ms,
+                grip_ms=grip_ms,
+                muzzle_ms=muzzle_ms,
+                emit_ms=emit_ms,
+                menu_blocked=menu_blocked,
+                cursor_visible=self.is_cursor_visible,
+                vision_state=new_vision_state,
+            )
+            self._maybe_log_perf()
+            if len(new_vision_state) <= 1 and new_vision_state.get("ai_status") == "ACTIVE":
+                time.sleep(0.08)
+            else:
+                time.sleep(0.04)
+
+        self.executor_pool.shutdown(wait=False, cancel_futures=True)
+
+    def _maybe_log_perf_spike(
+        self,
+        *,
+        loop_ms,
+        capture_ms,
+        stance_ms,
+        slot_ms,
+        weapon_ms,
+        scope_ms,
+        grip_ms,
+        muzzle_ms,
+        emit_ms,
+        menu_blocked,
+        cursor_visible,
+        vision_state,
+    ):
+        if loop_ms < self._perf_spike_threshold_ms:
+            return
+        now = time.time()
+        if now - self._perf_last_spike_log < self._perf_spike_cooldown_sec:
+            return
+        self._perf_last_spike_log = now
+        capture_mode = str(getattr(self.capture, "capture_mode", "UNKNOWN") or "UNKNOWN").upper()
+        ai_status = str(vision_state.get("ai_status", "UNKNOWN"))
+        stance = str(vision_state.get("stance", "NONE"))
+        gun1 = vision_state.get("gun1", {}) if isinstance(vision_state.get("gun1"), dict) else {}
+        gun2 = vision_state.get("gun2", {}) if isinstance(vision_state.get("gun2"), dict) else {}
+        # print(
+        #     f" > [SPIKE:{capture_mode}] "
+        #     f"L={loop_ms:.2f} "
+        #     f"C={capture_ms:.2f} "
+        #     f"S={slot_ms:.2f} "
+        #     f"W={weapon_ms:.2f} "
+        #     f"Sc={scope_ms:.2f} "
+        #     f"G={grip_ms:.2f} "
+        #     f"M={muzzle_ms:.2f} "
+        #     f"St={stance_ms:.2f} "
+        #     f"E={emit_ms:.2f} "
+        #     f"AI={ai_status} "
+        #     f"Cur={int(bool(cursor_visible))} "
+        #     f"Menu={int(bool(menu_blocked))} "
+        #     f"Stance={stance} "
+        #     f"G1={gun1.get('name', 'NONE')} "
+        #     f"G2={gun2.get('name', 'NONE')}"
+        # )
+
+    def _maybe_log_perf(self):
+        now = time.time()
+        if now - self._perf_last_log < 2.0 or self._perf_frames <= 0:
+            return
+        frames = float(self._perf_frames)
+        avg_capture = self._perf_capture_ms / frames
+        avg_stance = self._perf_stance_ms / frames
+        avg_slot = self._perf_slot_ms / frames
+        avg_weapon = self._perf_weapon_ms / frames
+        avg_scope = self._perf_scope_ms / frames
+        avg_grip = self._perf_grip_ms / frames
+        avg_muzzle = self._perf_muzzle_ms / frames
+        avg_detector_cpu = avg_weapon + avg_scope + avg_grip + avg_muzzle
+        avg_emit = self._perf_emit_ms / frames
+        avg_loop = self._perf_loop_ms / frames
+        avg_detect = avg_capture + avg_slot
+        if avg_detect <= 0.0:
+            self._perf_last_log = now
+            self._perf_capture_ms = 0.0
+            self._perf_stance_ms = 0.0
+            self._perf_slot_ms = 0.0
+            self._perf_weapon_ms = 0.0
+            self._perf_scope_ms = 0.0
+            self._perf_grip_ms = 0.0
+            self._perf_muzzle_ms = 0.0
+            self._perf_emit_ms = 0.0
+            self._perf_loop_ms = 0.0
+            self._perf_frames = 0
+            return
+        fps = 1000.0 / avg_loop if avg_loop > 0 else 0.0
+        capture_mode = str(getattr(self.capture, "capture_mode", "UNKNOWN") or "UNKNOWN").upper()
+        # print(
+        #     f" > [PERF:{capture_mode}] "
+        #     f"L={avg_loop:.2f}ms/{fps:.0f}Hz "
+        #     f"D={avg_detect:.2f} "
+        #     f"C={avg_capture:.2f} "
+        #     f"S={avg_slot:.2f} "
+        #     f"W={avg_weapon:.2f} "
+        #     f"Sc={avg_scope:.2f} "
+        #     f"G={avg_grip:.2f} "
+        #     f"M={avg_muzzle:.2f} "
+        #     f"St={avg_stance:.2f} "
+        #     f"E={avg_emit:.2f}"
+        # )
+        self._perf_last_log = now
+        self._perf_capture_ms = 0.0
+        self._perf_stance_ms = 0.0
+        self._perf_slot_ms = 0.0
+        self._perf_weapon_ms = 0.0
+        self._perf_scope_ms = 0.0
+        self._perf_grip_ms = 0.0
+        self._perf_muzzle_ms = 0.0
+        self._perf_emit_ms = 0.0
+        self._perf_loop_ms = 0.0
+        self._perf_frames = 0
+
+
+class KeyPollingThread(QThread):
+    def __init__(self, parent=None):
+        super().__init__()
+        self.backend = parent
+        self.running = True
+        self._last_keys = [False] * 8
+        self.refresh_settings()
+
+    def refresh_settings(self):
+        return None
+
+    def run(self):
+        while self.running and self.backend.running:
+            if not Utils.is_game_active():
+                self.backend.executor.stop_recoil()
+                time.sleep(0.1)
+                continue
+
+            vks = [0x11, 0x12, 0x31, 0x32, 0x43, 0x5A, 0x20, 0x02]
+            current_keys = [(win32api.GetAsyncKeyState(vk) & 0x8000) != 0 for vk in vks]
+            
+            if current_keys[4] and not self._last_keys[4]:
+                self.backend.set_stance_by_key("Crouch")
+            if current_keys[5] and not self._last_keys[5]:
+                self.backend.set_stance_by_key("Prone")
+            if current_keys[6] and not self._last_keys[6]:
+                self.backend.set_stance_by_key("Stand")
+
+            is_tab = (win32api.GetAsyncKeyState(0x09) & 0x8000) != 0
+            is_esc = (win32api.GetAsyncKeyState(0x1B) & 0x8000) != 0
+            is_map = (win32api.GetAsyncKeyState(0x4D) & 0x8000) != 0
+            is_comma = (win32api.GetAsyncKeyState(0xBC) & 0x8000) != 0
+
+            if is_tab:
+                self.backend.menu_blocked = False
+            elif is_esc or is_map or is_comma:
+                self.backend.menu_blocked = True
+
+            if current_keys[1] and (current_keys[7] and not self._last_keys[7]):
+                self.backend.toggle_hybrid_mode()
+
+            self._last_keys = current_keys
+            time.sleep(0.01)
+
+
+class BackendThread(QThread):
+    signal_update = pyqtSignal(object)
+    signal_message = pyqtSignal(str, str)
+    signal_ads_update = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.running = True
+        settings = SettingsManager()
+        self.capture = ScreenCapture(capture_mode=str(settings.get("capture_mode", "DXGI")).upper())
+        self.detector = DetectionEngine(template_folder="templates")
+        self.executor = RecoilExecutor()
+        
+        self.state = {
+            "gun1": {"name": "NONE", "scope": "NONE", "grip": "NONE", "accessories": "NONE"},
+            "gun2": {"name": "NONE", "scope": "NONE", "grip": "NONE", "accessories": "NONE"},
+            "stance": "Stand", "active_slot": 1, "paused": False,
+            "firing": False,
+            "hybrid_mode": "Scope1",
+            "ai_status": "HIBERNATE"
+        }
+
+        self.stance_lock_until = 0.0
+        self.ai_active_until = 0.0
+        self.stance_buffer = []
+        self.weapon_buffers = {"gun1": [], "gun2": []}
+        self.menu_blocked = False
+
+        self.pubg_config = PubgConfig()
+        self.sens_calculator = SensitivityCalculator()
+        self.native_input_bridge_active = False
+
+        if self.pubg_config.parse_config():
+            self.pubg_config.debug_print()
+
+        self.vision_worker = VisionWorker(self, self.capture, self.detector)
+        self.vision_worker.signal_vision_update.connect(self._on_vision_update)
+        self.vision_worker.start()
+        self.poller = KeyPollingThread(self)
+        self.poller.start()
+
+    def _copy_state(self):
+        return {
+            **self.state,
+            "gun1": dict(self.state.get("gun1", {})),
+            "gun2": dict(self.state.get("gun2", {})),
+        }
+
+    def _sync_executor(self):
+        slot = self.state["active_slot"]
+        gun_info = copy.deepcopy(self.state[f"gun{slot}"])
+        self.executor.live_stance = self.state["stance"]
+        self.executor.current_gun_name = gun_info["name"]
+        sens_multiplier = self.sens_calculator.calculate_sens_multiplier(
+            self.pubg_config,
+            gun_info,
+            hybrid_mode=self.state.get("hybrid_mode", "Scope1")
+        )
+        base_mult = self.executor.config.get_master_multiplier(gun_info)
+        self.executor.gun_base_mult = base_mult * sens_multiplier
+        st = self.executor.config.get_all_stance_multipliers(gun_info["name"])
+        self.executor.st_stand = float(st["Stand"])
+        self.executor.st_crouch = float(st["Crouch"])
+        self.executor.st_prone = float(st["Prone"])
+
+    def toggle_hybrid_mode(self):
+        if self.state.get("hybrid_mode") == "Scope1":
+            self.state["hybrid_mode"] = "Scope4"
+        else:
+            self.state["hybrid_mode"] = "Scope1"
+        
+        slot = self.state.get("active_slot", 1)
+        gun_key = f"gun{slot}"
+        current_scope = self.state[gun_key].get("scope", "")
+        if "KH" in str(current_scope).upper():
+            zoom = "1" if self.state["hybrid_mode"] == "Scope1" else "4"
+            self.state[gun_key]["scope"] = f"ScopeKH_{zoom}"
+
+        msg = "KH X4" if self.state["hybrid_mode"] == "Scope4" else "KH X1"
+        self.signal_message.emit("SCOPE", msg)
+
+        self._sync_executor()
+        self.signal_update.emit(self.state)
+
+    def reload_config(self):
+        self.executor.reload_config()
+        self.poller.refresh_settings()
+        self.signal_message.emit("SUCCESS", "CONFIG REFRESHED!")
+
+    def apply_capture_mode(self, mode):
+        try:
+            self.capture.set_capture_mode(mode)
+        except Exception:
+            pass
+
+    def _on_vision_update(self, data):
+        def normalize_scope(name):
+            if not name: return "NONE"
+            n = str(name).upper()
+            if "KH" in n: return "SCOPEKH"
+            return n
+
+        new_state = self._copy_state()
+        changed = False
+
+        if "ai_status" in data:
+            if data["ai_status"] == "ACTIVE":
+                self.ai_active_until = time.time() + 0.5
+            elif data["ai_status"] == "HIBERNATE":
+                self.ai_active_until = 0.0
+
+            if new_state.get("ai_status") != data["ai_status"]:
+                new_state["ai_status"] = data["ai_status"]
+                changed = True
+
+        if "stance" in data:
+            if time.time() > self.stance_lock_until:
+                self.stance_buffer.append(data["stance"])
+                if len(self.stance_buffer) > 3:
+                    self.stance_buffer.pop(0)
+
+                if len(self.stance_buffer) == 3 and all(s == self.stance_buffer[0] for s in self.stance_buffer):
+                    target_stance = self.stance_buffer[0]
+                    if new_state.get("stance") != target_stance:
+                        new_state["stance"] = target_stance
+                        changed = True
+
+        active_slot = new_state.get("active_slot", 1)
+        
+        for slot_num in [1, 2]:
+            key = f"gun{slot_num}"
+            if key in data and data[key]:
+                partial_weapon = data[key]
+                old_weapon = self.state.get(key, {})
+                
+                old_scope_raw = old_weapon.get("scope", "NONE") if isinstance(old_weapon, dict) else "NONE"
+                old_scope_norm = normalize_scope(old_scope_raw)
+                
+                new_scope_raw = partial_weapon.get("scope", old_scope_raw)
+                new_scope_norm = normalize_scope(new_scope_raw)
+
+                new_name = partial_weapon.get("name", "NONE")
+                if new_name == "NONE":
+                    self.weapon_buffers[key].append("NONE")
+                    if len(self.weapon_buffers[key]) < 2:
+                        partial_weapon["name"] = old_weapon.get("name", "NONE")
+                    if len(self.weapon_buffers[key]) > 5:
+                        self.weapon_buffers[key].pop(0)
+                else:
+                    self.weapon_buffers[key] = []
+
+                merged_weapon = {**old_weapon, **partial_weapon} if isinstance(old_weapon, dict) else partial_weapon
+                
+                if slot_num == active_slot:
+                    old_name = old_weapon.get("name", "NONE") if isinstance(old_weapon, dict) else "NONE"
+                    new_name = partial_weapon.get("name", old_name)
+                    
+                    if new_name != old_name or new_scope_norm != old_scope_norm:
+                        if new_scope_norm == "SCOPEKH":
+                            new_state["hybrid_mode"] = "Scope1"
+                        changed = True
+
+                if new_scope_norm == "SCOPEKH":
+                    zoom = "1" if new_state["hybrid_mode"] == "Scope1" else "4"
+                    merged_weapon["scope"] = f"ScopeKH_{zoom}"
+
+                new_state[key] = merged_weapon
+                changed = True
+
+        if changed:
+            new_state["firing"] = self.state.get("firing", False)
+            new_state["paused"] = self.state.get("paused", False)
+            new_state["active_slot"] = self.state.get("active_slot", 1)
+            
+            self.state = new_state
+            self._sync_executor()
+            self.signal_update.emit(self._copy_state())
+            
+            slot = self.state.get("active_slot", 1)
+            gun_info = self.state.get(f"gun{slot}", {})
+            if normalize_scope(gun_info.get("scope")) == "SCOPEKH":
+                msg = "KH X4" if self.state.get("hybrid_mode") == "Scope4" else "KH X1"
+                self.signal_message.emit("SCOPE", msg)
+
+    def set_slot(self, slot):
+        self.state["paused"] = False
+        if self.state.get("active_slot") != slot:
+            self.state["active_slot"] = slot
+        self._sync_executor()
+        self.signal_update.emit(self._copy_state())
+
+    def set_paused(self, paused):
+        self.state["paused"] = paused
+        self.signal_update.emit(self._copy_state())
+
+    def set_firing(self, is_firing):
+        if self.state.get("firing") != is_firing:
+            self.state["firing"] = is_firing
+            self.signal_update.emit(self._copy_state())
+
+    def set_stance_by_key(self, stance):
+        if stance == "Crouch" and self.state.get("stance") == "Crouch":
+            stance = "Stand"
+        elif stance == "Prone" and self.state.get("stance") == "Prone":
+            stance = "Stand"
+        
+        self.state["stance"] = stance
+        self.stance_buffer = [stance] * 3
+        self.stance_lock_until = time.time() + 0.8
+        
+        if self.executor:
+            self.executor.live_stance = stance
+            
+        self.signal_update.emit(self._copy_state())
+
+    def stop(self):
+        self.running = False
+        self.vision_worker.running = False
+        self.poller.running = False
+        self.quit()
+
+
+class EngineCoreNativeInputBridge:
+    def __init__(self):
+        self.dll = None
+        self.available = False
+        self._load()
+
+    def _load(self):
+        try:
+            dll_path = get_resource_path(os.path.join("native", "EngineCore.dll"))
+            if not os.path.exists(dll_path):
+                return
+            self.dll = ctypes.CDLL(dll_path)
+            self.dll.EngineCore_SetInputScreenMetrics.argtypes = [ctypes.c_int, ctypes.c_int]
+            self.dll.EngineCore_SetInputScreenMetrics.restype = None
+            self.dll.EngineCore_ConfigureFastLoot.argtypes = [ctypes.POINTER(EngineCoreFastLootConfig)]
+            self.dll.EngineCore_ConfigureFastLoot.restype = ctypes.c_int
+            self.dll.EngineCore_ConfigureSlide.argtypes = [ctypes.POINTER(EngineCoreSlideConfig)]
+            self.dll.EngineCore_ConfigureSlide.restype = ctypes.c_int
+            self.dll.EngineCore_SetFastLootEnabled.argtypes = [ctypes.c_int]
+            self.dll.EngineCore_SetFastLootEnabled.restype = None
+            self.dll.EngineCore_SetSlideEnabled.argtypes = [ctypes.c_int]
+            self.dll.EngineCore_SetSlideEnabled.restype = None
+            self.dll.EngineCore_OnKeyEvent.argtypes = [ctypes.c_ushort, ctypes.c_int, ctypes.c_int]
+            self.dll.EngineCore_OnKeyEvent.restype = None
+            self.dll.EngineCore_StopFastLoot.argtypes = []
+            self.dll.EngineCore_StopFastLoot.restype = None
+            self.dll.EngineCore_StopSlide.argtypes = []
+            self.dll.EngineCore_StopSlide.restype = None
+            self.available = True
+        except Exception:
+            self.dll = None
+            self.available = False
+
+    def apply_settings(self, fast_loot_enabled: bool, fast_loot_key: str, slide_enabled: bool):
+        if not self.available or self.dll is None:
+            return False
+
+        screen_w = int(win32api.GetSystemMetrics(0))
+        screen_h = int(win32api.GetSystemMetrics(1))
+        self.dll.EngineCore_SetInputScreenMetrics(screen_w, screen_h)
+
+        fast_loot_cfg = EngineCoreFastLootConfig(
+            int(bool(fast_loot_enabled)),
+            int(gui_key_to_vk(fast_loot_key)),
+            0x49,
+            screen_w,
+            screen_h,
+            133,
+            149,
+            61,
+            938,
+            504,
+            7,
+            150,
+            2,
+            50,
+            1,
+        )
+        slide_cfg = EngineCoreSlideConfig(
+            int(bool(slide_enabled)),
+            ord("C"),
+            ord("C"),
+            0x10,
+            0xA0,
+            0xA1,
+            ord("W"),
+            ord("A"),
+            ord("D"),
+            200,
+            10,
+            20,
+            30,
+            10,
+            80,
+            1,
+        )
+
+        if not self.dll.EngineCore_ConfigureFastLoot(ctypes.byref(fast_loot_cfg)):
+            return False
+        if not self.dll.EngineCore_ConfigureSlide(ctypes.byref(slide_cfg)):
+            return False
+
+        self.dll.EngineCore_SetFastLootEnabled(int(bool(fast_loot_enabled)))
+        self.dll.EngineCore_SetSlideEnabled(int(bool(slide_enabled)))
+        return True
+
+    def on_key_event(self, key_name: str, pressed: bool):
+        if not self.available or self.dll is None:
+            return
+        vk = int(gui_key_to_vk(key_name))
+        if vk <= 0:
+            return
+        try:
+            self.dll.EngineCore_OnKeyEvent(vk, int(bool(pressed)), 0)
+        except Exception:
+            pass
+
+    def stop(self):
+        if not self.available or self.dll is None:
+            return
+        try:
+            self.dll.EngineCore_StopFastLoot()
+            self.dll.EngineCore_StopSlide()
+        except Exception:
+            pass
+
+if __name__ == "__main__":
+    # Đã làm sạch chú thích lỗi mã hóa.
+    set_high_dpi()
+    _self_elevate_and_whitelist()
+    _optimize_cpu_and_priority()
+
+    
+    # Đã làm sạch chú thích lỗi mã hóa.
+    # print_banner()
+    # print(" > [SYSTEM] Initializing environment...")
+
+    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtGui import QIcon
+    from PyQt6.QtCore import QThread, pyqtSignal, QObject
+
+
+    # Đã làm sạch chú thích lỗi mã hóa.
+    myappid = 'di88.phutho.macro.v1'
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception:
+        pass
+
+    timer_enforcer = HighPrecisionTimer()
+    timer_enforcer.start()
+
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+    app.setApplicationName("Di88-VP")
+    app.setApplicationDisplayName("Macro & Aim By Di88")
+
+    icon_path = get_resource_path("di88vp.ico")
+
+    if UI_ONLY_MODE:
+        w = win32api.GetSystemMetrics(0)
+        h = win32api.GetSystemMetrics(1)
+        dialog_result = ResolutionNoticeDialog(f"{w}x{h}").exec()
+        if dialog_result != QDialog.DialogCode.Accepted:
+            sys.exit(0)
+        window = MacroWindow()
+        window.setWindowTitle("Macro & Aim By Di88")
+        window.setWindowIcon(QIcon(icon_path))
+        window.show()
+        print(" > [SYSTEM] UI Preview is Ready!")
+        exit_code = app.exec()
+        sys.exit(exit_code)
+    
+    
+
+    # Đã làm sạch chú thích lỗi mã hóa.
+    w = win32api.GetSystemMetrics(0)
+    h = win32api.GetSystemMetrics(1)
+    dialog_result = ResolutionNoticeDialog(f"{w}x{h}").exec()
+    if dialog_result != QDialog.DialogCode.Accepted:
+        sys.exit(0)
+
+    window = MacroWindow()
+    window.setWindowTitle("Macro & Aim By Di88")
+    window.setWindowIcon(QIcon(icon_path))
+
+    backend = BackendThread()
+    backend.signal_update.connect(window.update_ui_state)
+    backend.signal_message.connect(window.show_message)
+    backend.signal_ads_update.connect(window.update_ads_display)
+    # Đã làm sạch chú thích lỗi mã hóa.
+    initial_ads = getattr(backend.pubg_config, 'ads_mode', None)
+    if initial_ads:
+        window.update_ads_display(initial_ads.upper())
+    window.set_backend(backend)
+    window.signal_settings_changed.connect(backend.reload_config)
+    
+    # Đã làm sạch chú thích lỗi mã hóa.
+    class InputBridge(QObject):
+        def __init__(self, window, backend):
+            super().__init__()
+            self.window = window
+            self.backend = backend
+            self.settings = SettingsManager()
+            self.recoil_config = self.backend.executor.config
+            self.is_ads = False
+            self.ads_toggled = False
+            self._ads_reset_timer = None
+            self.native_input_bridge = EngineCoreNativeInputBridge()
+            self.reload_config()
+
+        def reload_config(self):
+            self.guitoggle_key = (
+                self.window.btn_guitoggle.text().strip().lower()
+                if hasattr(self.window, "btn_guitoggle") and self.window.btn_guitoggle
+                else self.settings.get("keybinds.gui_toggle", "f1").lower()
+            )
+            self.fast_loot_key = (
+                self.window.btn_fastloot_key.text().strip().lower()
+                if hasattr(self.window, "btn_fastloot_key") and self.window.btn_fastloot_key
+                else self.settings.get("fast_loot_key", "caps_lock").lower()
+            )
+            self.fast_loot_enabled = (
+                hasattr(self.window, "btn_fastloot_toggle")
+                and self.window.btn_fastloot_toggle
+                and self.window.btn_fastloot_toggle.text().upper() == "ON"
+            )
+            self.slide_trick_enabled = (
+                hasattr(self.window, "btn_slide_toggle")
+                and self.window.btn_slide_toggle
+                and self.window.btn_slide_toggle.text().upper() == "ON"
+            )
+            if hasattr(self, "keyboard_listener") and self.keyboard_listener:
+                self.keyboard_listener.update_guitoggle_key(self.guitoggle_key)
+            native_ok = self.native_input_bridge.apply_settings(
+                fast_loot_enabled=self.fast_loot_enabled,
+                fast_loot_key=self.fast_loot_key,
+                slide_enabled=self.slide_trick_enabled,
+            )
+            self.backend.native_input_bridge_active = bool(native_ok)
+
+        def handle_input_action(self, action):
+            if not is_game_active():
+                return
+            if action == "SLOT_1":
+                self.backend.set_slot(1)
+                self.window.update_macro_style(True)
+            elif action == "SLOT_2":
+                self.backend.set_slot(2)
+                self.window.update_macro_style(True)
+            if action == "MACRO_PAUSE":
+                self.backend.set_paused(True)
+                self.window.update_macro_style(False)
+
+        def handle_raw_key(self, key, pressed):
+            if key == self.guitoggle_key and pressed:
+                if self.window.isVisible():
+                    self.window.hide()
+                else:
+                    self.window.restore_window()
+                return
+            if self.backend.native_input_bridge_active:
+                self.native_input_bridge.on_key_event(key, pressed)
+            if pressed and not is_game_active():
+                return
+            elif key == "f2" and pressed:
+                self.backend.reload_config()
+            elif key == "r" and pressed:
+                pubg_ads = getattr(self.backend.pubg_config, 'ads_mode', None)
+                ads_mode = pubg_ads.upper() if pubg_ads else self.settings.get("ads_mode", "HOLD").upper()
+                if ads_mode in ["CLICK", "TOGGLE"]:
+                    self.is_ads = False
+                    if hasattr(self.window, 'crosshair') and self.window.crosshair:
+                        self.window.crosshair.reset_toggle_state()
+
+        def handle_mouse_click(self, btn, pressed):
+            btn_name = str(btn).lower()
+            if btn_name == "right":
+                pubg_ads = getattr(self.backend.pubg_config, 'ads_mode', None)
+                ads_mode = pubg_ads.upper() if pubg_ads else self.settings.get("ads_mode", "HOLD").upper()
+                if ads_mode == "HOLD":
+                    self.is_ads = pressed
+                elif ads_mode in ["CLICK", "TOGGLE"]:
+                    self.is_ads = True
+                    if pressed and self._ads_reset_timer and self._ads_reset_timer.is_alive():
+                        self._ads_reset_timer.cancel()
+                        self._ads_reset_timer = None
+
+            if btn_name == "left" and pressed:
+                if self._ads_reset_timer and self._ads_reset_timer.is_alive():
+                    self._ads_reset_timer.cancel()
+                    self._ads_reset_timer = None
+                flags, _, _ = win32gui.GetCursorInfo()
+                cursor_visible = (flags != 0)
+
+                if not Utils.is_game_active() or cursor_visible:
+                    return
+
+                pubg_ads = getattr(self.backend.pubg_config, 'ads_mode', None)
+                ads_mode = pubg_ads.upper() if pubg_ads else self.settings.get("ads_mode", "HOLD").upper()
+                if ads_mode == "HOLD" and not self.is_ads:
+                    return
+
+                data = self.backend.state
+                if data.get("paused", False):
+                    return
+
+                slot = data.get("active_slot", 1)
+                gun_info = data.get(f"gun{slot}", {})
+                name = gun_info.get("name", "NONE")
+                if name != "NONE":
+                    self.backend.set_firing(True)
+                    base_table = self.recoil_config.get_base_table(name)
+                    if base_table:
+                        raw_pixels = self.recoil_config.get_raw_pattern(base_table)
+                        self.backend.executor.start_recoil(raw_pixels, initial_stance=data.get("stance", "Stand"))
+            elif btn_name == "left" and not pressed:
+                self.backend.set_firing(False)
+                self.backend.executor.stop_recoil()
+                if self.backend.executor.full_pattern_done:
+                    pubg_ads = getattr(self.backend.pubg_config, 'ads_mode', None)
+                    ads_mode = pubg_ads.upper() if pubg_ads else self.settings.get("ads_mode", "HOLD").upper()
+                    if ads_mode in ["CLICK", "TOGGLE"]:
+                        def _reset_after_empty_mag():
+                            self.is_ads = False
+                            if hasattr(self.window, 'crosshair') and self.window.crosshair:
+                                self.window.crosshair.reset_toggle_state()
+                        QTimer.singleShot(0, _reset_after_empty_mag)
+
+    input_bridge = InputBridge(window, backend)
+    window.signal_settings_changed.connect(input_bridge.reload_config)
+
+    keyboard_listener = KeyboardListener()
+    input_bridge.keyboard_listener = keyboard_listener
+    keyboard_listener.signal_key_event.connect(input_bridge.handle_raw_key)
+    keyboard_listener.signal_action.connect(input_bridge.handle_input_action)
+    keyboard_listener.start_listening()
+
+    mouse_listener = MouseListener()
+    mouse_listener.signal_click.connect(input_bridge.handle_mouse_click)
+    mouse_listener.start_listening()
+
+    window.set_runtime_handles(
+        keyboard_listener=keyboard_listener,
+        mouse_listener=mouse_listener,
+        native_input_worker=input_bridge.native_input_bridge,
+        timers=[timer_enforcer],
+    )
+
+    def exception_hook(exctype, value, tb):
+        import traceback
+        err_msg = "".join(traceback.format_exception(exctype, value, tb))
+        print(f"\n> [CRASH REPORT]\n{err_msg}")
+        timer_enforcer.stop()
+        sys.exit(1)
+    sys.excepthook = exception_hook
+
+    backend.start()
+    window.restore_window()
+    
+    print(" > [SYSTEM] Macro DI88-VP is Ready.")
+    # sys.stdout.write("\n") # Chừa dòng cho Status Bar Động
+    exit_code = app.exec()
+    sys.exit(exit_code)
+
+# ===== MAU PYTHON ARCHIVE START =====
+# Archived Python sources from sample folder for one-file migration/reference.
+# --- BEGIN FILE: AimAI/__init__.py ---
+# from .ClassAimBridge import AimBridge
+# from .ClassAimConfig import AimIntegrationConfig
+# from .ClassAimDefaults import build_detect_aim_defaults, build_detect_aim_schema
+# 
+# __all__ = [
+#     "AimBridge",
+#     "AimIntegrationConfig",
+#     "build_detect_aim_defaults",
+#     "build_detect_aim_schema",
+# ]
+# --- END FILE: AimAI/__init__.py ---
+
+# SAMPLE AIM LOGIC FOR NATIVE MIGRATION
+# --- BEGIN FILE: AimAI/ClassAimBridge.py ---
+# from __future__ import annotations
+# 
+# import ctypes
+# from dataclasses import dataclass, field
+# from pathlib import Path
+# from types import SimpleNamespace
+# from typing import Any
+# 
+# from AimAI.ClassAimConfig import AimIntegrationConfig
+# from AimAI.ClassAimDefaults import build_detect_aim_defaults
+# from AimAI.Integration.ClassAimNativeDllBridge import AimNativeDllBridge
+# from Core.ClassAssetPack import get_asset_pack
+# 
+# NATIVE_PROVIDER = "DirectML"
+# NATIVE_BACKEND_LABEL = "DirectML (GPU)"
+# 
+# 
+# @dataclass(slots=True)
+# class AimRuntimeSnapshot:
+#     status: str
+#     enabled: bool
+#     safe_mode: bool
+#     output_backend: str
+#     capture_backend: str
+#     inference_backend: str
+#     model: str
+#     fps: float
+#     source_fps: float
+#     inference_ms: float
+#     capture_ms: float
+#     preprocess_ms: float
+#     postprocess_ms: float
+#     loop_ms: float
+#     detections: int
+#     processed_frames: int
+#     last_error: str
+#     runtime_source: str
+#     native_required: bool
+#     native_ready: bool
+#     native_error: str
+#     native_failures: int
+# 
+#     def to_dict(self) -> dict:
+#         return {
+#             "status": self.status,
+#             "enabled": self.enabled,
+#             "safe_mode": self.safe_mode,
+#             "output_backend": self.output_backend,
+#             "capture_backend": self.capture_backend,
+#             "inference_backend": self.inference_backend,
+#             "model": self.model,
+#             "fps": self.fps,
+#             "source_fps": self.source_fps,
+#             "inference_ms": self.inference_ms,
+#             "capture_ms": self.capture_ms,
+#             "preprocess_ms": self.preprocess_ms,
+#             "postprocess_ms": self.postprocess_ms,
+#             "loop_ms": self.loop_ms,
+#             "detections": self.detections,
+#             "processed_frames": self.processed_frames,
+#             "last_error": self.last_error,
+#             "runtime_source": self.runtime_source,
+#             "native_required": self.native_required,
+#             "native_ready": self.native_ready,
+#             "native_error": self.native_error,
+#             "native_failures": self.native_failures,
+#         }
+# 
+# 
+# @dataclass(slots=True)
+# class AimUiSettings:
+#     bindings: dict[str, str] = field(default_factory=dict)
+#     sliders: dict[str, Any] = field(default_factory=dict)
+#     toggles: dict[str, bool] = field(default_factory=dict)
+#     dropdowns: dict[str, str] = field(default_factory=dict)
+#     colors: dict[str, str] = field(default_factory=dict)
+#     file_locations: dict[str, str] = field(default_factory=dict)
+#     last_loaded_model: str = "N/A"
+#     last_loaded_config: str = "N/A"
+# 
+# 
+# class _StatusValue:
+#     def __init__(self, value: str) -> None:
+#         self.value = value
+# 
+# 
+# class _ControllerShim:
+#     def __init__(self) -> None:
+#         self.state = SimpleNamespace(
+#             enabled=False,
+#             safe_mode=False,
+#             backend_name="native_dll",
+#             last_error="",
+#         )
+#         self._status = "idle"
+# 
+#     def get_status(self) -> _StatusValue:
+#         return _StatusValue(self._status)
+# 
+#     def set_status(self, status: str) -> None:
+#         self._status = status
+# 
+# 
+# class _HotkeyShim:
+#     def __init__(self, bridge: "AimBridge") -> None:
+#         self.bridge = bridge
+#         self._pressed_toggle_keys: set[str] = set()
+# 
+#     def toggle_aim_assist(self) -> None:
+#         self.bridge.toggle_aim_assist()
+# 
+#     def toggle_auto_trigger(self) -> None:
+#         self.bridge.toggle_auto_trigger()
+# 
+#     def handle_press(self, key_name: str) -> None:
+#         normalized = self.bridge.normalize_binding(key_name)
+#         if normalized == self.bridge.normalize_binding(
+#             self.bridge.settings.bindings.get("Emergency Stop Keybind", "f8")
+#         ):
+#             if normalized not in self._pressed_toggle_keys:
+#                 self._pressed_toggle_keys.add(normalized)
+#                 self.bridge.toggle_aim_assist()
+#             return
+#         if normalized == self.bridge.normalize_binding(
+#             self.bridge.settings.bindings.get("Toggle Trigger Keybind", "f7")
+#         ):
+#             if normalized not in self._pressed_toggle_keys:
+#                 self._pressed_toggle_keys.add(normalized)
+#                 self.bridge.toggle_auto_trigger()
+#             return
+#         self.bridge.set_binding_pressed(normalized, True)
+# 
+#     def handle_release(self, key_name: str) -> None:
+#         normalized = self.bridge.normalize_binding(key_name)
+#         self._pressed_toggle_keys.discard(normalized)
+#         self.bridge.set_binding_pressed(normalized, False)
+# 
+# 
+# class AimBridge:
+#     def __init__(self, detect_root: Path | None = None) -> None:
+#         self.detect_root = detect_root or Path(__file__).resolve().parents[1]
+#         self.settings = self._build_default_settings()
+#         self.asset_pack = get_asset_pack()
+#         self.controller = _ControllerShim()
+#         self.hotkeys = _HotkeyShim(self)
+#         self.context = self
+#         self.native = AimNativeDllBridge(self.detect_root)
+#         self._native_loaded = False
+#         self._native_model_loaded = False
+#         self._native_error = ""
+#         self._running = False
+#         self._primary_pressed = False
+#         self._secondary_pressed = False
+#         self._capture_backend = "DirectX"
+#         self._native_failures = 0
+#         self._last_status: dict[str, object] = {}
+# 
+#     def apply_detect_settings(self, settings: dict) -> AimRuntimeSnapshot:
+#         was_running = self._running
+#         config = AimIntegrationConfig.from_detect_settings(settings)
+#         self._apply_config(config)
+#         self._ensure_native_loaded()
+# 
+#         selected_model = self._resolve_effective_model_name(config)
+#         if selected_model:
+#             self.settings.last_loaded_model = selected_model
+# 
+#         self._capture_backend = str(config.runtime.get("capture_backend", "DirectX") or "DirectX")
+#         self.settings.dropdowns["Screen Capture Method"] = self._capture_backend
+# 
+#         self.native.configure(
+#             self.settings.last_loaded_model,
+#             self._capture_backend,
+#             NATIVE_BACKEND_LABEL,
+#         )
+#         self._load_native_model_or_raise(self.settings.last_loaded_model)
+#         self._push_native_settings()
+# 
+#         if was_running or bool(config.runtime.get("auto_start")):
+#             self._running = True
+#             self.controller.set_status("running")
+#             self.controller.state.enabled = bool(self.settings.toggles.get("Aim Assist", False))
+#             self.native.start()
+#             self.native.start_capture_loop()
+#         return self.snapshot()
+# 
+#     def reload_from_detect_settings(self, settings: dict) -> AimRuntimeSnapshot:
+#         config = AimIntegrationConfig.from_detect_settings(settings)
+#         auto_start = bool(config.runtime.get("auto_start", False))
+#         if self._running and not auto_start:
+#             self.stop_runtime()
+#         return self.apply_detect_settings(settings)
+# 
+#     def start_runtime(self) -> AimRuntimeSnapshot:
+#         self._require_native_ready()
+#         self._running = True
+#         self.controller.set_status("running")
+#         self.controller.state.enabled = bool(self.settings.toggles.get("Aim Assist", False))
+#         self._push_native_settings()
+#         self.native.start()
+#         self.native.start_capture_loop()
+#         return self.snapshot()
+# 
+#     def stop_runtime(self) -> AimRuntimeSnapshot:
+#         self._running = False
+#         self._primary_pressed = False
+#         self._secondary_pressed = False
+#         try:
+#             self.native.stop()
+#         except Exception as exc:
+#             self._native_error = str(exc)
+#         self.controller.set_status("idle")
+#         self.controller.state.enabled = False
+#         return self.snapshot()
+# 
+#     def toggle_aim_assist(self) -> AimRuntimeSnapshot:
+#         enabled = not bool(self.settings.toggles.get("Aim Assist", False))
+#         self.settings.toggles["Aim Assist"] = enabled
+#         self.controller.state.enabled = enabled
+#         self._push_native_settings()
+#         return self.snapshot()
+# 
+#     def toggle_auto_trigger(self) -> AimRuntimeSnapshot:
+#         enabled = not bool(self.settings.toggles.get("Auto Trigger", False))
+#         self.settings.toggles["Auto Trigger"] = enabled
+#         self._push_native_settings()
+#         return self.snapshot()
+# 
+#     def warmup_inference(self, runs: int = 2) -> None:
+#         self._require_native_ready()
+#         self.native.run_warmup_inference(max(1, int(runs)))
+# 
+#     def snapshot(self) -> AimRuntimeSnapshot:
+#         status: dict[str, object] = {}
+#         try:
+#             if self._native_loaded:
+#                 status = self.native.status()
+#                 self._native_error = str(status.get("last_error", "") or "")
+#                 self._last_status = status
+#         except Exception as exc:
+#             self._native_failures += 1
+#             self._native_error = str(exc)
+# 
+#         backend = str(status.get("backend", "") or NATIVE_BACKEND_LABEL)
+#         native_ready = bool(self._native_loaded and self._native_model_loaded and not self._native_error)
+#         status_text = "running" if self._running else "idle"
+#         if self._native_error:
+#             status_text = "error" if not self._running else "running"
+#         return AimRuntimeSnapshot(
+#             status=status_text,
+#             enabled=bool(self.settings.toggles.get("Aim Assist", False)),
+#             safe_mode=False,
+#             output_backend="native_dll",
+#             capture_backend=self._capture_backend,
+#             inference_backend=f"Native DLL / {backend}",
+#             model=self.settings.last_loaded_model,
+#             fps=round(float(status.get("fps", 0.0) or 0.0), 2) if self._running else 0.0,
+#             source_fps=round(float(status.get("source_fps", 0.0) or 0.0), 2) if self._running else 0.0,
+#             inference_ms=round(float(status.get("latency_ms", 0.0) or 0.0), 2) if self._running else 0.0,
+#             capture_ms=round(float(status.get("capture_ms", 0.0) or 0.0), 2) if self._running else 0.0,
+#             preprocess_ms=0.0,
+#             postprocess_ms=0.0,
+#             loop_ms=round(float(status.get("loop_ms", status.get("latency_ms", 0.0)) or 0.0), 2) if self._running else 0.0,
+#             detections=int(status.get("detection_count", 0) or 0),
+#             processed_frames=int(status.get("processed_frames", 0) or 0),
+#             last_error=self._native_error,
+#             runtime_source="Native DLL" if native_ready else "Native DLL Error",
+#             native_required=True,
+#             native_ready=native_ready,
+#             native_error=self._native_error,
+#             native_failures=self._native_failures,
+#         )
+# 
+#     def set_binding_pressed(self, normalized_key: str, pressed: bool) -> None:
+#         primary = self.normalize_binding(self.settings.bindings.get("Aim Keybind", "right"))
+#         secondary = self.normalize_binding(self.settings.bindings.get("Second Aim Keybind", "ctrl"))
+#         if normalized_key == primary:
+#             self._primary_pressed = bool(pressed)
+#             self._push_native_settings()
+#         elif normalized_key == secondary:
+#             self._secondary_pressed = bool(pressed)
+#             self._push_native_settings()
+# 
+#     @staticmethod
+#     def normalize_binding(key_name: object) -> str:
+#         normalized = str(key_name or "").strip().lower().replace(" ", "_")
+#         aliases = {
+#             "right_mouse": "right",
+#             "left_mouse": "left",
+#             "middle_mouse": "middle",
+#             "left_ctrl": "ctrl",
+#             "right_ctrl": "ctrl",
+#             "ctrl_l": "ctrl",
+#             "ctrl_r": "ctrl",
+#             "control_l": "ctrl",
+#             "control_r": "ctrl",
+#             "left_shift": "shift",
+#             "right_shift": "shift",
+#             "shift_l": "shift",
+#             "shift_r": "shift",
+#         }
+#         return aliases.get(normalized, normalized)
+# 
+#     def _apply_config(self, config: AimIntegrationConfig) -> None:
+#         self.settings.bindings = dict(config.bindings)
+#         self.settings.sliders = self._normalize_slider_values(config.sliders)
+#         self.settings.toggles = dict(config.toggles)
+#         self.settings.dropdowns = dict(config.dropdowns)
+#         self.settings.colors = dict(config.colors)
+#         self.settings.file_locations = dict(config.file_locations)
+#         self.settings.last_loaded_model = str(config.meta.get("last_loaded_model", "N/A"))
+#         self.settings.last_loaded_config = str(config.meta.get("last_loaded_config", "N/A"))
+# 
+#     def _ensure_native_loaded(self) -> None:
+#         if self._native_loaded:
+#             return
+#         self.native.load()
+#         self._native_loaded = True
+#         self._native_error = ""
+# 
+#     def _load_native_model_or_raise(self, model_name: str) -> None:
+#         model_path = self._resolve_model_path(model_name)
+#         if not model_name or model_name.upper() == "N/A" or not model_path.exists():
+#             raise RuntimeError(f"Native model not found: {model_path}")
+#         self.native.load_model(model_path, provider=NATIVE_PROVIDER)
+#         self._native_model_loaded = True
+#         self._native_error = ""
+# 
+#     def _push_native_settings(self) -> None:
+#         if not self._native_loaded:
+#             return
+#         left, top, width, height = self._fov_capture_region()
+#         self.native.set_capture_target(left, top, width, height)
+#         self.native.set_detection_settings(
+#             min_confidence=self._minimum_confidence_ratio(),
+#             max_detections=64,
+#             target_fps=self._target_fps(),
+#         )
+#         screen_left, screen_top, screen_width, screen_height = self._screen_geometry()
+#         _ = screen_left, screen_top
+#         aim_should_move = bool(self.settings.toggles.get("Aim Assist", False)) and (
+#             bool(self.settings.toggles.get("Constant AI Tracking", False))
+#             or self._primary_pressed
+#             or self._secondary_pressed
+#         )
+#         self.native.set_aim_settings(
+#             screen_width=screen_width,
+#             screen_height=screen_height,
+#             primary_aim_position=float(self.settings.sliders.get("Primary Aim Position", 50)),
+#             secondary_aim_position=float(self.settings.sliders.get("Secondary Aim Position", 50)),
+#             mouse_sensitivity=float(self.settings.sliders.get("Mouse Sensitivity (+/-)", 1.0)),
+#             ema_smoothing=float(self.settings.sliders.get("EMA Smoothening", 0.5)),
+#             mouse_jitter=int(float(self.settings.sliders.get("Mouse Jitter", 0))),
+#             head_priority=str(self.settings.dropdowns.get("Target Priority", "Body -> Head")) == "Head -> Body",
+#             aim_enabled=aim_should_move,
+#             output_enabled=aim_should_move,
+#         )
+#         self._push_native_visual_settings()
+# 
+#     def apply_visual_settings(self, visual_state: dict[str, object] | None) -> None:
+#         if not self._native_loaded:
+#             return
+#         visual_state = visual_state or {}
+#         self.native.set_visual_settings(
+#             show_fov=bool(visual_state.get("show_fov", self.settings.toggles.get("Show FOV", False))),
+#             show_detect=bool(visual_state.get("show_detect", self.settings.toggles.get("Show Detected Player", False))),
+#             show_confidence=bool(visual_state.get("show_confidence", self.settings.toggles.get("Show AI Confidence", False))),
+#             show_tracers=bool(visual_state.get("show_tracers", self.settings.toggles.get("Show Tracers", False))),
+#             fov_size=int(float(visual_state.get("fov_size", self.settings.sliders.get("FOV Size", 300)) or 300)),
+#             fov_color_argb=self._argb_hex_to_uint(
+#                 visual_state.get("fov_color", self.settings.colors.get("FOV Color", "#FF8080FF")),
+#                 0xFFFF8080,
+#             ),
+#             detect_color_argb=self._argb_hex_to_uint(
+#                 visual_state.get("detect_color", self.settings.colors.get("Detected Player Color", "#FFFF4040")),
+#                 0xFFFF4040,
+#             ),
+#             border_thickness=int(float(visual_state.get("border_thickness", self.settings.sliders.get("Border Thickness", 2)) or 2)),
+#             opacity=float(visual_state.get("opacity", self.settings.sliders.get("Opacity", 1.0)) or 1.0),
+#         )
+# 
+#     def _push_native_visual_settings(self) -> None:
+#         self.apply_visual_settings(
+#             {
+#                 "show_fov": self.settings.toggles.get("Show FOV", False),
+#                 "show_detect": self.settings.toggles.get("Show Detected Player", False),
+#                 "show_confidence": self.settings.toggles.get("Show AI Confidence", False),
+#                 "show_tracers": self.settings.toggles.get("Show Tracers", False),
+#                 "fov_size": self.settings.sliders.get("FOV Size", 300),
+#                 "fov_color": self.settings.colors.get("FOV Color", "#FF8080FF"),
+#                 "detect_color": self.settings.colors.get("Detected Player Color", "#FFFF4040"),
+#                 "border_thickness": self.settings.sliders.get("Border Thickness", 2),
+#                 "opacity": self.settings.sliders.get("Opacity", 1.0),
+#             }
+#         )
+# 
+#     def _require_native_ready(self) -> None:
+#         self._ensure_native_loaded()
+#         if not self._native_model_loaded:
+#             raise RuntimeError("Native DLL model is not loaded")
+# 
+#     def _resolve_effective_model_name(self, config: AimIntegrationConfig) -> str:
+#         available = set(self._list_models())
+#         runtime_model = str(config.runtime.get("model", "") or "").strip()
+#         if runtime_model and runtime_model in available:
+#             return runtime_model
+#         last_model = str(config.meta.get("last_loaded_model", "") or "").strip()
+#         if last_model and last_model.upper() != "N/A" and last_model in available:
+#             return last_model
+#         ordered = self._list_models()
+#         return ordered[0] if ordered else runtime_model or last_model
+# 
+#     def _list_models(self) -> list[str]:
+#         if self.asset_pack.available:
+#             packed_models = self.asset_pack.list_files("bin/models", (".onnx",))
+#             if packed_models:
+#                 return sorted(Path(path).name for path in packed_models)
+#         model_dir = self.detect_root / "bin" / "models"
+#         if not model_dir.exists():
+#             return []
+#         return sorted(path.name for path in model_dir.glob("*.onnx") if path.is_file())
+# 
+#     def _resolve_model_path(self, model_name: str) -> Path:
+#         packed_path = f"bin/models/{model_name}"
+#         if self.asset_pack.available and self.asset_pack.has_file(packed_path):
+#             return self.asset_pack.extract_to_cache(packed_path)
+#         return self.detect_root / "bin" / "models" / model_name
+# 
+#     def _minimum_confidence_ratio(self) -> float:
+#         try:
+#             return max(0.0, min(1.0, float(self.settings.sliders.get("AI Minimum Confidence", 45)) / 100.0))
+#         except Exception:
+#             return 0.45
+# 
+#     def _target_fps(self) -> int:
+#         for key in ("Capture FPS", "Target FPS"):
+#             try:
+#                 value = int(float(self.settings.sliders.get(key, 0)))
+#                 if value > 0:
+#                     return max(30, min(240, value))
+#             except Exception:
+#                 continue
+#         return 144
+# 
+#     @staticmethod
+#     def _argb_hex_to_uint(value: object, fallback: int) -> int:
+#         text = str(value or "").strip()
+#         if text.startswith("#"):
+#             text = text[1:]
+#         if len(text) != 8:
+#             return int(fallback)
+#         try:
+#             return int(text, 16)
+#         except ValueError:
+#             return int(fallback)
+# 
+#     def _fov_capture_region(self) -> tuple[int, int, int, int]:
+#         _, _, screen_width, screen_height = self._screen_geometry()
+#         try:
+#             fov_size = int(float(self.settings.sliders.get("FOV Size", 300)))
+#         except Exception:
+#             fov_size = 300
+#         fov_size = max(32, min(min(screen_width, screen_height), fov_size))
+#         left = max(0, int((screen_width - fov_size) / 2))
+#         top = max(0, int((screen_height - fov_size) / 2))
+#         return left, top, fov_size, fov_size
+# 
+#     @staticmethod
+#     def _normalize_slider_values(sliders: dict[str, object]) -> dict[str, object]:
+#         normalized = dict(sliders)
+#         delay = normalized.get("Auto Trigger Delay")
+#         if isinstance(delay, (int, float)) and delay <= 1:
+#             normalized["Auto Trigger Delay"] = int(round(float(delay) * 1000.0))
+#         return normalized
+# 
+#     @staticmethod
+#     def _screen_geometry() -> tuple[int, int, int, int]:
+#         user32 = ctypes.windll.user32
+#         width = user32.GetSystemMetrics(0)
+#         height = user32.GetSystemMetrics(1)
+#         return (0, 0, width, height)
+# 
+#     @staticmethod
+#     def _build_default_settings() -> AimUiSettings:
+#         defaults = build_detect_aim_defaults("DirectX")
+#         return AimUiSettings(
+#             bindings=dict(defaults["bindings"]),
+#             sliders=dict(defaults["sliders"]),
+#             toggles=dict(defaults["toggles"]),
+#             dropdowns=dict(defaults["dropdowns"]),
+#             colors=dict(defaults["colors"]),
+#             file_locations=dict(defaults["file_locations"]),
+#             last_loaded_model=str(defaults["meta"].get("last_loaded_model", "N/A")),
+#             last_loaded_config=str(defaults["meta"].get("last_loaded_config", "N/A")),
+#         )
+# --- END FILE: AimAI/ClassAimBridge.py ---
+
+# --- BEGIN FILE: AimAI/ClassAimConfig.py ---
+# from __future__ import annotations
+# 
+# from dataclasses import dataclass
+# from typing import Any
+# 
+# from AimAI.ClassAimDefaults import build_detect_aim_defaults, merge_aim_settings
+# 
+# 
+# @dataclass(slots=True)
+# class AimIntegrationConfig:
+#     runtime: dict[str, Any]
+#     bindings: dict[str, str]
+#     sliders: dict[str, Any]
+#     toggles: dict[str, bool]
+#     dropdowns: dict[str, str]
+#     colors: dict[str, str]
+#     file_locations: dict[str, str]
+#     minimize: dict[str, bool]
+#     meta: dict[str, Any]
+# 
+#     @classmethod
+#     def from_detect_settings(cls, settings: dict) -> "AimIntegrationConfig":
+#         aim = settings.get("aim", {}) if isinstance(settings, dict) else {}
+#         runtime = aim.get("runtime", {}) if isinstance(aim, dict) else {}
+#         dropdowns = aim.get("dropdowns", {}) if isinstance(aim, dict) else {}
+#         capture_source = runtime.get("capture_backend") or dropdowns.get("Screen Capture Method") or settings.get("capture_mode", "DirectX")
+#         default_capture = _normalize_capture_backend(str(capture_source))
+#         defaults = build_detect_aim_defaults(default_capture)
+#         merged = merge_aim_settings(defaults, settings.get("aim"))
+#         _upgrade_legacy_shape(merged, settings)
+#         return cls(
+#             runtime=dict(merged["runtime"]),
+#             bindings=dict(merged["bindings"]),
+#             sliders=dict(merged["sliders"]),
+#             toggles=dict(merged["toggles"]),
+#             dropdowns=dict(merged["dropdowns"]),
+#             colors=dict(merged["colors"]),
+#             file_locations=dict(merged["file_locations"]),
+#             minimize=dict(merged["minimize"]),
+#             meta=dict(merged["meta"]),
+#         )
+# 
+# 
+# def _upgrade_legacy_shape(merged: dict, settings: dict) -> None:
+#     runtime = merged["runtime"]
+#     toggles = merged["toggles"]
+#     dropdowns = merged["dropdowns"]
+# 
+#     capture_source = runtime.get("capture_backend") or dropdowns.get("Screen Capture Method") or settings.get("capture_mode", "DirectX")
+#     runtime["capture_backend"] = _normalize_capture_backend(str(capture_source))
+#     runtime["output_backend"] = "native_dll"
+#     runtime["force_native"] = True
+# 
+#     toggles["Aim Assist"] = bool(runtime.get("enabled", toggles.get("Aim Assist", False)))
+#     toggles["Show FOV"] = bool(merged["toggles"].get("Show FOV", True))
+#     toggles["Show Detected Player"] = bool(merged["toggles"].get("Show Detected Player", False))
+#     toggles["Auto Trigger"] = bool(merged["toggles"].get("Auto Trigger", False))
+#     toggles["Dynamic FOV"] = bool(merged["toggles"].get("Dynamic FOV", False))
+# 
+#     dropdowns["Screen Capture Method"] = str(runtime["capture_backend"])
+#     merged["meta"]["last_loaded_model"] = str(runtime.get("model", merged["meta"].get("last_loaded_model", "N/A")) or "N/A")
+# 
+# 
+# def _normalize_capture_backend(value: str) -> str:
+#     normalized = str(value or "DirectX").strip().upper()
+#     if normalized == "DIRECTX":
+#         return "DirectX"
+#     if normalized == "GDI+":
+#         return "GDI+"
+#     if normalized == "DXCAM":
+#         return "DirectX"
+#     if normalized in {"MSS", "PIL"}:
+#         return "GDI+"
+#     return "DirectX"
+# --- END FILE: AimAI/ClassAimConfig.py ---
+
+# --- BEGIN FILE: AimAI/ClassAimDefaults.py ---
+# from __future__ import annotations
+# 
+# from copy import deepcopy
+# 
+# 
+# AIMMY_BINDINGS = {
+#     "Aim Keybind": "Right",
+#     "Second Aim Keybind": "ctrl",
+#     "Toggle Trigger Keybind": "F7",
+#     "Dynamic FOV Keybind": "Left",
+#     "Emergency Stop Keybind": "F8",
+#     "Model Switch Keybind": "OemPipe",
+# }
+# 
+# BASE_SLIDERS = {
+#     "Q Weight": 1.0,
+#     "LQR Sensitivity": 0.0,
+#     "Capture FPS": 144,
+#     "Target FPS": 144,
+# }
+# 
+# BASE_TOGGLES = {
+#     "Color Aim": False,
+# }
+# 
+# BASE_DROPDOWNS = {
+#     "Target Order": "Cyan -> Red",
+#     "Blood Color": "Pro Green (Best)",
+# }
+# 
+# AIMMY_SLIDERS = {
+#     "Suggested Model": "",
+#     "SelectedDisplay": 0,
+#     "FOV Size": 300,
+#     "Dynamic FOV Size": 10,
+#     "Mouse Sensitivity (+/-)": 0.80,
+#     "Mouse Jitter": 4,
+#     "Sticky Aim Threshold": 0,
+#     "Y Offset (Up/Down)": 0,
+#     "Y Offset (%)": 50,
+#     "X Offset (Left/Right)": 0,
+#     "X Offset (%)": 50,
+#     "EMA Smoothening": 0.5,
+#     "Kalman Lead Time": 0.10,
+#     "WiseTheFox Lead Time": 0.15,
+#     "Shalloe Lead Multiplier": 3.0,
+#     "Auto Trigger Delay": 0.1,
+#     "Primary Aim Position": 50,
+#     "Secondary Aim Position": 50,
+#     "AI Minimum Confidence": 45,
+#     "AI Confidence Font Size": 20,
+#     "Corner Radius": 0,
+#     "Border Thickness": 1,
+#     "Opacity": 1,
+# }
+# 
+# AIMMY_TOGGLES = {
+#     "Aim Assist": False,
+#     "Sticky Aim": False,
+#     "Constant AI Tracking": False,
+#     "Predictions": False,
+#     "EMA Smoothening": False,
+#     "Enable Model Switch Keybind": True,
+#     "Auto Trigger": False,
+#     "FOV": False,
+#     "Dynamic FOV": False,
+#     "Third Person Support": False,
+#     "Masking": False,
+#     "Show Detected Player": False,
+#     "Cursor Check": False,
+#     "Spray Mode": False,
+#     "Show FOV": True,
+#     "Show AI Confidence": False,
+#     "Show Tracers": False,
+#     "Collect Data While Playing": False,
+#     "Auto Label Data": False,
+#     "LG HUB Mouse Movement": False,
+#     "Mouse Background Effect": True,
+#     "Debug Mode": False,
+#     "UI TopMost": False,
+#     "StreamGuard": False,
+#     "X Axis Percentage Adjustment": False,
+#     "Y Axis Percentage Adjustment": False,
+# }
+# 
+# AIMMY_MINIMIZE = {
+#     "Aim Assist": False,
+#     "Aim Config": False,
+#     "Predictions": False,
+#     "Auto Trigger": False,
+#     "FOV Config": False,
+#     "ESP Config": False,
+#     "Model Settings": False,
+#     "Settings Menu": False,
+#     "X/Y Percentage Adjustment": False,
+#     "Theme Settings": False,
+#     "Screen Settings": False,
+# }
+# 
+# AIMMY_DROPDOWNS = {
+#     "Prediction Method": "Kalman Filter",
+#     "Detection Area Type": "Closest to Center Screen",
+#     "Aiming Boundaries Alignment": "Center",
+#     "Mouse Movement Method": "Mouse Event",
+#     "Screen Capture Method": "DirectX",
+#     "Tracer Position": "Bottom",
+#     "Movement Path": "Cubic Bezier",
+#     "Image Size": "640",
+#     "Target Class": "Best Confidence",
+#     "Target Priority": "Body -> Head",
+#     "FOV Style": "Circle",
+# }
+# 
+# AIMMY_COLORS = {
+#     "FOV Color": "#FF8080FF",
+#     "Detected Player Color": "#FF00FFFF",
+#     "Theme Color": "#FF722ED1",
+# }
+# 
+# AIMMY_FILE_LOCATIONS = {
+#     "ddxoft DLL Location": "",
+# }
+# 
+# 
+# def build_detect_aim_defaults(default_capture_backend: str = "DirectX") -> dict:
+#     bindings = {}
+#     bindings.update(AIMMY_BINDINGS)
+# 
+#     sliders = dict(BASE_SLIDERS)
+#     sliders.update(AIMMY_SLIDERS)
+# 
+#     toggles = dict(BASE_TOGGLES)
+#     toggles.update(AIMMY_TOGGLES)
+# 
+#     dropdowns = dict(BASE_DROPDOWNS)
+#     dropdowns.update(AIMMY_DROPDOWNS)
+# 
+#     colors = {}
+#     colors.update(AIMMY_COLORS)
+# 
+#     file_locations = {}
+#     file_locations.update(AIMMY_FILE_LOCATIONS)
+# 
+#     return {
+#         "runtime": {
+#             "enabled": False,
+#             "auto_start": False,
+#             "safe_mode": False,
+#             "output_enabled": False,
+#             "output_backend": "native_dll",
+#             "capture_backend": default_capture_backend,
+#             "model": "",
+#             "force_native": True,
+#         },
+#         "bindings": bindings,
+#         "sliders": sliders,
+#         "toggles": toggles,
+#         "dropdowns": dropdowns,
+#         "colors": colors,
+#         "file_locations": file_locations,
+#         "minimize": dict(AIMMY_MINIMIZE),
+#         "meta": {
+#             "schema_version": 2,
+#             "source_of_truth": "Aimmy2/MainWindow + UISections",
+#             "last_loaded_model": "N/A",
+#             "last_loaded_config": "N/A",
+#         },
+#     }
+# 
+# 
+# def build_detect_aim_schema() -> dict:
+#     return {}
+# 
+# 
+# def normalize_detect_aim_payload(settings: dict) -> bool:
+#     aim = settings.get("aim")
+#     if not isinstance(aim, dict):
+#         return False
+# 
+#     updated = False
+#     runtime = aim.setdefault("runtime", {})
+#     toggles = aim.setdefault("toggles", {})
+# 
+#     runtime_key_map = {
+#         "enabled": "enabled",
+#         "auto_start": "auto_start",
+#         "safe_mode": "safe_mode",
+#         "output_enabled": "output_enabled",
+#         "output_backend": "output_backend",
+#         "capture_backend": "capture_backend",
+#         "model": "model",
+#         "force_native": "force_native",
+#     }
+#     toggle_key_map = {
+#         "show_fov": "Show FOV",
+#         "show_detection": "Show Detected Player",
+#         "auto_trigger": "Auto Trigger",
+#         "dynamic_fov": "Dynamic FOV",
+#     }
+# 
+#     for old_key, new_key in runtime_key_map.items():
+#         if old_key in aim:
+#             runtime[new_key] = aim.pop(old_key)
+#             updated = True
+# 
+#     for old_key, new_key in toggle_key_map.items():
+#         if old_key in aim:
+#             toggles[new_key] = aim.pop(old_key)
+#             updated = True
+# 
+#     return updated
+# 
+# 
+# def merge_aim_settings(defaults: dict, current: dict | None) -> dict:
+#     merged = deepcopy(defaults)
+#     if not isinstance(current, dict):
+#         return merged
+#     _deep_update(merged, current)
+#     return merged
+# 
+# 
+# def _deep_update(target: dict, source: dict) -> None:
+#     for key, value in source.items():
+#         if isinstance(value, dict) and isinstance(target.get(key), dict):
+#             _deep_update(target[key], value)
+#         else:
+#             target[key] = value
+# --- END FILE: AimAI/ClassAimDefaults.py ---
+
+# --- BEGIN FILE: AimAI/Integration/__init__.py ---
+# """Integration package for the UI-facing AIM runtime.
+# 
+# Keep this package initializer intentionally empty. Importing every integration
+# class here creates circular imports when the native-only AimBridge loads the
+# DLL bridge.
+# """
+# --- END FILE: AimAI/Integration/__init__.py ---
+
+# --- BEGIN FILE: AimAI/Integration/ClassAimBindingForwarder.py ---
+# from __future__ import annotations
+# 
+# 
+# class AimBindingForwarder:
+#     def __init__(self, host) -> None:
+#         self.host = host
+# 
+#     @property
+#     def backend(self):
+#         return self.host.backend
+# 
+#     def forward_mouse_binding(self, button_name: str, pressed: bool) -> None:
+#         if self.backend.aim_bridge is None:
+#             return
+# 
+#         mapped = {
+#             "left": "left",
+#             "right": "right",
+#             "middle": "middle",
+#             "x1": "xbutton1",
+#             "x2": "xbutton2",
+#         }.get(str(button_name).lower())
+#         if not mapped:
+#             return
+# 
+#         if pressed:
+#             self.backend.aim_bridge.context.hotkeys.handle_press(mapped)
+#         else:
+#             self.backend.aim_bridge.context.hotkeys.handle_release(mapped)
+#         self.host.refresh_controller.refresh_state(force_emit=True)
+# 
+#     def forward_key_binding(self, key_name: str, pressed: bool) -> None:
+#         if self.backend.aim_bridge is None:
+#             return
+# 
+#         mapped = {
+#             "ctrl_l": "ctrl",
+#             "ctrl_r": "ctrl",
+#             "control_l": "ctrl",
+#             "control_r": "ctrl",
+#             "shift_l": "shift",
+#             "shift_r": "shift",
+#             "alt_l": "alt",
+#             "alt_r": "alt",
+#         }.get(str(key_name).lower(), str(key_name).lower())
+# 
+#         if pressed:
+#             self.backend.aim_bridge.context.hotkeys.handle_press(mapped)
+#         else:
+#             self.backend.aim_bridge.context.hotkeys.handle_release(mapped)
+#         self.host.refresh_controller.refresh_state(force_emit=True)
+# --- END FILE: AimAI/Integration/ClassAimBindingForwarder.py ---
+
+# --- BEGIN FILE: AimAI/Integration/ClassAimBridgeManager.py ---
+# from __future__ import annotations
+# 
+# import copy
+# import threading
+# 
+# from AimAI.ClassAimBridge import AimBridge
+# from Core.ClassSettings import SettingsManager
+# 
+# 
+# class AimBridgeManager:
+#     def __init__(self, host) -> None:
+#         self.host = host
+# 
+#     @property
+#     def backend(self):
+#         return self.host.backend
+# 
+#     def ensure_bridge(self):
+#         if self.backend.aim_bridge is None:
+#             self.backend.aim_bridge = AimBridge()
+#         return self.backend.aim_bridge
+# 
+#     def bootstrap_runtime(self, enable_after_bootstrap: bool = False) -> None:
+#         if self.backend._aim_bootstrap_done:
+#             if enable_after_bootstrap and self.backend.aim_bridge is not None:
+#                 self._toggle_aim_after_bootstrap(self.backend.aim_bridge)
+#             return
+# 
+#         if self.backend._aim_bootstrap_in_progress:
+#             self.backend._aim_enable_after_bootstrap = (
+#                 self.backend._aim_enable_after_bootstrap or enable_after_bootstrap
+#             )
+#             return
+# 
+#         self.backend._aim_bootstrap_in_progress = True
+#         self.backend._aim_enable_after_bootstrap = enable_after_bootstrap
+#         self.backend.state["aim"] = {
+#             **copy.deepcopy(self.backend.state.get("aim", {})),
+#             "status": "loading",
+#             "enabled": False,
+#             "fps": 0.0,
+#             "inference_ms": 0.0,
+#             "last_error": "",
+#         }
+#         self.backend.signal_update.emit(copy.deepcopy(self.backend.state))
+# 
+#         threading.Thread(target=self._bootstrap_worker, daemon=True).start()
+# 
+#     def _bootstrap_worker(self) -> None:
+#         settings = SettingsManager().load()
+#         try:
+#             prepared = self.host.runtime_preparer.prepare(settings)
+#             aim_bridge = AimBridge()
+#             snapshot = aim_bridge.reload_from_detect_settings(prepared)
+#             aim_bridge.warmup_inference()
+#             if self.backend._aim_enable_after_bootstrap and snapshot.status != "running":
+#                 snapshot = aim_bridge.start_runtime()
+# 
+#             if self.backend._aim_enable_after_bootstrap:
+#                 self._toggle_aim_after_bootstrap(aim_bridge)
+#                 snapshot = aim_bridge.snapshot()
+# 
+#             self.backend.aim_bridge = aim_bridge
+#             self.backend.state["aim"] = self.host.refresh_controller.build_runtime_state(snapshot)
+#             self.backend._aim_bootstrap_done = True
+#         except Exception as exc:
+#             self.backend.state["aim"] = self.host.state_builder.build_error_state(settings, exc)
+#         finally:
+#             self.backend._aim_bootstrap_in_progress = False
+#             self.backend._aim_enable_after_bootstrap = False
+#             self.backend.signal_update.emit(copy.deepcopy(self.backend.state))
+# 
+#     @staticmethod
+#     def _toggle_aim_after_bootstrap(aim_bridge: AimBridge) -> None:
+#         toggle_key = str(aim_bridge.context.settings.bindings.get("Emergency Stop Keybind", "f8"))
+#         aim_bridge.context.hotkeys.handle_press(toggle_key)
+#         aim_bridge.context.hotkeys.handle_release(toggle_key)
+# 
+#     def sync_integration(self, settings_data: dict | None) -> None:
+#         try:
+#             aim_bridge = self.ensure_bridge()
+#             was_running = aim_bridge.context.controller.get_status().value == "running"
+#             prepared = self.host.runtime_preparer.prepare(settings_data)
+#             prepared.setdefault("aim", {}).setdefault("runtime", {})["auto_start"] = was_running
+#             snapshot = aim_bridge.reload_from_detect_settings(prepared)
+#             if was_running and snapshot.status != "running":
+#                 snapshot = aim_bridge.start_runtime()
+#             self.backend.state["aim"] = self.host.refresh_controller.build_runtime_state(snapshot)
+#         except Exception as exc:
+#             self.backend.state["aim"] = self.host.state_builder.build_error_state(settings_data, exc)
+# 
+#     def start_runtime(self) -> None:
+#         snapshot = self.ensure_bridge().start_runtime()
+#         self.backend._aim_bootstrap_done = True
+#         self.backend.state["aim"] = self.host.refresh_controller.build_runtime_state(snapshot)
+#         self.backend.signal_update.emit(copy.deepcopy(self.backend.state))
+# 
+#     def stop_runtime(self) -> None:
+#         if self.backend.aim_bridge is None:
+#             return
+# 
+#         snapshot = self.backend.aim_bridge.stop_runtime()
+#         self.backend.state["aim"] = self.host.refresh_controller.build_runtime_state(snapshot)
+#         self.backend.signal_update.emit(copy.deepcopy(self.backend.state))
+# 
+#     def toggle_aim_assist(self) -> None:
+#         if self.backend.aim_bridge is None or bool(getattr(self.backend, "_aim_bootstrap_in_progress", False)):
+#             self.bootstrap_runtime(enable_after_bootstrap=True)
+#             return
+#         current_enabled = bool(self.backend.aim_bridge.context.settings.toggles.get("Aim Assist", False))
+#         if not current_enabled and self.backend.aim_bridge.context.controller.get_status().value != "running":
+#             self.backend.aim_bridge.start_runtime()
+#         snapshot = self.backend.aim_bridge.toggle_aim_assist()
+#         if current_enabled and not snapshot.enabled:
+#             snapshot = self.backend.aim_bridge.stop_runtime()
+#         self.backend.state["aim"] = self.host.refresh_controller.build_runtime_state(snapshot)
+#         self.backend.signal_update.emit(copy.deepcopy(self.backend.state))
+# 
+#     def toggle_auto_trigger(self) -> None:
+#         if self.backend.aim_bridge is None or bool(getattr(self.backend, "_aim_bootstrap_in_progress", False)):
+#             self.bootstrap_runtime(enable_after_bootstrap=False)
+#             return
+#         current_enabled = bool(self.backend.aim_bridge.context.settings.toggles.get("Auto Trigger", False))
+#         if not current_enabled and self.backend.aim_bridge.context.controller.get_status().value != "running":
+#             self.backend.aim_bridge.start_runtime()
+#         snapshot = self.backend.aim_bridge.toggle_auto_trigger()
+#         if current_enabled:
+#             aim_enabled = bool(self.backend.aim_bridge.context.settings.toggles.get("Aim Assist", False))
+#             trigger_enabled = bool(self.backend.aim_bridge.context.settings.toggles.get("Auto Trigger", False))
+#             if not aim_enabled and not trigger_enabled:
+#                 snapshot = self.backend.aim_bridge.stop_runtime()
+#         self.backend.state["aim"] = self.host.refresh_controller.build_runtime_state(snapshot)
+#         self.backend.signal_update.emit(copy.deepcopy(self.backend.state))
+# --- END FILE: AimAI/Integration/ClassAimBridgeManager.py ---
+
+# --- BEGIN FILE: AimAI/Integration/ClassAimInputBridge.py ---
+# from __future__ import annotations
+# 
+# import win32gui
+# from Core import Utils
+# 
+# from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+# 
+# from Core.ClassSettings import SettingsManager
+# 
+# 
+# class AimInputBridge(QObject):
+#     toggle_window_requested = pyqtSignal()
+#     toggle_crosshair_requested = pyqtSignal()
+#     toggle_overlay_requested = pyqtSignal()
+# 
+#     def __init__(self, window, backend):
+#         super().__init__()
+#         self.window = window
+#         self.backend = backend
+#         self.settings = SettingsManager()
+#         self.recoil_config = self.backend.executor.config
+#         self.is_ads = False
+#         self.ads_toggled = False
+#         self._ads_reset_timer = None
+#         self.keyboard_listener = None
+#         self.toggle_window_requested.connect(self.window.toggle_window_visibility)
+#         self.toggle_crosshair_requested.connect(self.window.toggle_crosshair_visibility)
+#         self.toggle_overlay_requested.connect(self.window.toggle_overlay_visibility)
+#         self.reload_config()
+# 
+#     def reload_config(self):
+#         self.guitoggle_key = self.settings.get("keybinds.gui_toggle", "f1").lower()
+#         self.crosshair_toggle_key = self.settings.get("crosshair.toggle_key", "none").lower()
+#         self.overlay_key = self.settings.get("overlay_key", "delete").lower()
+#         self.aim_toggle_key = str(self.settings.get("aim.bindings.Emergency Stop Keybind", "f8")).lower()
+#         self.aim_trigger_key = str(self.settings.get("aim.bindings.Toggle Trigger Keybind", "f7")).lower()
+#         self.aim_primary_key = str(self.settings.get("aim.bindings.Aim Keybind", "right")).lower()
+#         self.aim_secondary_key = str(self.settings.get("aim.bindings.Second Aim Keybind", "left ctrl")).lower()
+#         if self.keyboard_listener:
+#             self.keyboard_listener.update_guitoggle_key(self.guitoggle_key)
+#             self.keyboard_listener.update_crosshair_toggle_key(self.crosshair_toggle_key)
+#             self.keyboard_listener.update_overlay_key(self.overlay_key)
+#             self.keyboard_listener.update_aim_runtime_keys(
+#                 self.aim_toggle_key,
+#                 self.aim_trigger_key,
+#                 self.aim_secondary_key,
+#             )
+# 
+#     @staticmethod
+#     def _normalize_mouse_binding(key_name):
+#         mapped = {
+#             "right mouse": "right",
+#             "left mouse": "left",
+#             "middle mouse": "middle",
+#             "xbutton1": "x1",
+#             "xbutton2": "x2",
+#         }
+#         return mapped.get(str(key_name).lower(), str(key_name).lower())
+# 
+#     def _ensure_aim_bootstrap(self, enable_after_bootstrap: bool = False) -> bool:
+#         if getattr(self.backend, "aim_bridge", None) is None or bool(
+#             getattr(self.backend, "_aim_bootstrap_in_progress", False)
+#         ):
+#             self.backend.bootstrap_aim_runtime(enable_after_bootstrap=enable_after_bootstrap)
+#             return False
+#         return True
+# 
+#     def handle_input_action(self, action):
+#         if action == "SLOT_1":
+#             self.backend.set_slot(1)
+#             self.window.update_macro_style(True)
+#         elif action == "SLOT_2":
+#             self.backend.set_slot(2)
+#             self.window.update_macro_style(True)
+# 
+#         if not Utils.is_game_active():
+#             return
+#         if action == "MACRO_PAUSE":
+#             self.backend.set_paused(True)
+#             self.window.update_macro_style(False)
+# 
+#     def handle_raw_key(self, key, pressed):
+#         if key == self.guitoggle_key and pressed:
+#             self.toggle_window_requested.emit()
+#             return
+#         if key == self.crosshair_toggle_key and pressed:
+#             self.toggle_crosshair_requested.emit()
+#             return
+#         if key == self.overlay_key and pressed:
+#             self.toggle_overlay_requested.emit()
+#             return
+# 
+#         aim_runtime_keys = {
+#             self.aim_toggle_key,
+#             self.aim_trigger_key,
+#             self.aim_secondary_key,
+#         }
+#         if key in aim_runtime_keys:
+#             if pressed and key == self.aim_toggle_key and hasattr(self.backend, "toggle_aim_assist_direct"):
+#                 self.backend.toggle_aim_assist_direct()
+#                 return
+#             if pressed and key == self.aim_trigger_key and hasattr(self.backend, "toggle_auto_trigger_direct"):
+#                 self.backend.toggle_auto_trigger_direct()
+#                 return
+#             if pressed:
+#                 if not self._ensure_aim_bootstrap(enable_after_bootstrap=False):
+#                     return
+#             if hasattr(self.backend, "forward_aim_key_binding"):
+#                 self.backend.forward_aim_key_binding(key, pressed)
+#         if pressed and key in aim_runtime_keys:
+#             return
+#         if pressed and not Utils.is_game_active():
+#             return
+#         if key == "f2" and pressed:
+#             self.backend.reload_config()
+#         elif key == "r" and pressed:
+#             pubg_ads = getattr(self.backend.pubg_config, "ads_mode", None)
+#             ads_mode = pubg_ads.upper() if pubg_ads else self.settings.get("ads_mode", "HOLD").upper()
+#             if ads_mode in ["CLICK", "TOGGLE"]:
+#                 self.is_ads = False
+#                 if hasattr(self.window, "crosshair") and self.window.crosshair:
+#                     self.window.crosshair.reset_toggle_state()
+# 
+#     def handle_mouse_click(self, btn, pressed):
+#         btn_name = str(btn).lower()
+#         if pressed and btn_name in {
+#             self._normalize_mouse_binding(self.aim_primary_key),
+#             self._normalize_mouse_binding(self.aim_secondary_key),
+#         }:
+#             if not self._ensure_aim_bootstrap():
+#                 return
+# 
+#         if hasattr(self.backend, "forward_aim_mouse_binding"):
+#             self.backend.forward_aim_mouse_binding(btn_name, pressed)
+# 
+#         if btn_name == "right":
+#             pubg_ads = getattr(self.backend.pubg_config, "ads_mode", None)
+#             ads_mode = pubg_ads.upper() if pubg_ads else self.settings.get("ads_mode", "HOLD").upper()
+#             if ads_mode == "HOLD":
+#                 self.is_ads = pressed
+#             elif ads_mode in ["CLICK", "TOGGLE"]:
+#                 self.is_ads = True
+#                 if pressed and self._ads_reset_timer and self._ads_reset_timer.is_alive():
+#                     self._ads_reset_timer.cancel()
+#                     self._ads_reset_timer = None
+# 
+#         if btn_name == "left" and pressed:
+#             if self._ads_reset_timer and self._ads_reset_timer.is_alive():
+#                 self._ads_reset_timer.cancel()
+#                 self._ads_reset_timer = None
+#             flags, _, _ = win32gui.GetCursorInfo()
+#             cursor_visible = flags != 0
+#             if not Utils.is_game_active() or cursor_visible:
+#                 return
+# 
+#             pubg_ads = getattr(self.backend.pubg_config, "ads_mode", None)
+#             ads_mode = pubg_ads.upper() if pubg_ads else self.settings.get("ads_mode", "HOLD").upper()
+#             if ads_mode == "HOLD" and not self.is_ads:
+#                 return
+# 
+#             data = self.backend.state
+#             if data.get("paused", False):
+#                 return
+# 
+#             slot = data.get("active_slot", 1)
+#             gun_info = data.get(f"gun{slot}", {})
+#             name = gun_info.get("name", "NONE")
+#             if name != "NONE":
+#                 self.backend.set_firing(True)
+#                 base_table = self.recoil_config.get_base_table(name)
+#                 if base_table:
+#                     raw_pixels = self.recoil_config.get_raw_pattern(base_table)
+#                     self.backend.executor.start_recoil(raw_pixels, initial_stance=data.get("stance", "Stand"))
+#         elif btn_name == "left" and not pressed:
+#             self.backend.set_firing(False)
+#             self.backend.executor.stop_recoil()
+#             if self.backend.executor.full_pattern_done:
+#                 pubg_ads = getattr(self.backend.pubg_config, "ads_mode", None)
+#                 ads_mode = pubg_ads.upper() if pubg_ads else self.settings.get("ads_mode", "HOLD").upper()
+#                 if ads_mode in ["CLICK", "TOGGLE"]:
+#                     def _reset_after_empty_mag():
+#                         self.is_ads = False
+#                         if hasattr(self.window, "crosshair") and self.window.crosshair:
+#                             self.window.crosshair.reset_toggle_state()
+#                     QTimer.singleShot(0, _reset_after_empty_mag)
+# --- END FILE: AimAI/Integration/ClassAimInputBridge.py ---
+
+# --- BEGIN FILE: AimAI/Integration/ClassAimNativeDllBridge.py ---
+# from __future__ import annotations
+# 
+# import ctypes
+# import os
+# from pathlib import Path
+# import sysconfig
+# 
+# 
+# class Di88AimRuntimeStatus(ctypes.Structure):
+#     _fields_ = [
+#         ("struct_size", ctypes.c_uint32),
+#         ("ready", ctypes.c_uint32),
+#         ("running", ctypes.c_uint32),
+#         ("status", ctypes.c_char * 32),
+#         ("backend", ctypes.c_char * 64),
+#         ("capture", ctypes.c_char * 32),
+#         ("model", ctypes.c_char * 260),
+#         ("fps", ctypes.c_double),
+#         ("latency_ms", ctypes.c_double),
+#         ("capture_ms", ctypes.c_double),
+#         ("target_left", ctypes.c_int32),
+#         ("target_top", ctypes.c_int32),
+#         ("target_width", ctypes.c_int32),
+#         ("target_height", ctypes.c_int32),
+#         ("detection_count", ctypes.c_uint32),
+#         ("captured_frames", ctypes.c_uint32),
+#         ("capture_running", ctypes.c_uint32),
+#         ("model_loaded", ctypes.c_uint32),
+#         ("input_width", ctypes.c_int32),
+#         ("input_height", ctypes.c_int32),
+#         ("warmup_ms", ctypes.c_double),
+#         ("source_fps", ctypes.c_double),
+#         ("loop_ms", ctypes.c_double),
+#         ("processed_frames", ctypes.c_uint32),
+#     ]
+# 
+# 
+# class AimNativeDllBridge:
+#     def __init__(self, detect_root: Path | None = None, dll_path: Path | None = None) -> None:
+#         self.detect_root = detect_root or Path(__file__).resolve().parents[2]
+#         candidates = [
+#             self.detect_root / "native" / "di88_aim_runtime.dll",
+#             self.detect_root / "AimRuntimeNative" / "build-vs" / "Release" / "di88_aim_runtime.dll",
+#             self.detect_root / "AimRuntimeNative" / "build" / "Release" / "di88_aim_runtime.dll",
+#         ]
+#         resolved = dll_path
+#         if resolved is None:
+#             resolved = next((candidate for candidate in candidates if candidate.exists()), candidates[0])
+#         self.dll_path = resolved
+#         self.lib: ctypes.WinDLL | None = None
+#         self.handle = ctypes.c_void_p()
+#         self._dll_directory_handles: list[object] = []
+#         self._has_set_capture_target = False
+#         self._has_start_capture_loop = False
+#         self._has_stop_capture_loop = False
+#         self._has_load_model = False
+#         self._has_run_warmup_inference = False
+#         self._has_set_aim_settings = False
+#         self._has_set_detection_settings = False
+#         self._has_set_visual_settings = False
+#         self._has_last_error = False
+# 
+#     def __del__(self) -> None:
+#         try:
+#             self.unload()
+#         except Exception:
+#             pass
+# 
+#     def load(self) -> None:
+#         if self.lib is not None:
+#             return
+#         if not self.dll_path.exists():
+#             raise FileNotFoundError(f"Native DLL not found: {self.dll_path}")
+# 
+#         self._prepare_dll_search_paths()
+#         self.lib = ctypes.WinDLL(str(self.dll_path))
+#         self._bind_functions()
+# 
+#         result = self.lib.di88_aim_create(ctypes.byref(self.handle))
+#         if result != 0 or not self.handle.value:
+#             raise RuntimeError(f"di88_aim_create failed with code {result}")
+# 
+#     def unload(self) -> None:
+#         if self.lib is None:
+#             return
+#         if self.handle.value:
+#             self.lib.di88_aim_destroy(self.handle)
+#             self.handle = ctypes.c_void_p()
+#         self.lib = None
+# 
+#     def version(self) -> str:
+#         self.load()
+#         assert self.lib is not None
+#         return self.lib.di88_aim_runtime_version().decode("utf-8", errors="replace")
+# 
+#     def configure(self, model: str = "", capture: str = "DirectX", backend: str = "DirectML (GPU)") -> int:
+#         self.load()
+#         assert self.lib is not None
+#         result = self.lib.di88_aim_configure(
+#             self.handle,
+#             model.encode("utf-8"),
+#             capture.encode("utf-8"),
+#             backend.encode("utf-8"),
+#         )
+#         self._raise_if_failed(result, "di88_aim_configure")
+#         return result
+# 
+#     def load_model(self, model_path: str | Path, provider: str = "DirectML") -> int:
+#         self.load()
+#         assert self.lib is not None
+#         if not self._has_load_model:
+#             return 0
+#         result = self.lib.di88_aim_load_model(
+#             self.handle,
+#             str(model_path).encode("utf-8"),
+#             provider.encode("utf-8"),
+#         )
+#         self._raise_if_failed(result, "di88_aim_load_model")
+#         return result
+# 
+#     def run_warmup_inference(self, runs: int = 2) -> int:
+#         self.load()
+#         assert self.lib is not None
+#         if not self._has_run_warmup_inference:
+#             return 0
+#         result = self.lib.di88_aim_run_warmup_inference(self.handle, int(runs))
+#         self._raise_if_failed(result, "di88_aim_run_warmup_inference")
+#         return result
+# 
+#     def set_aim_settings(
+#         self,
+#         screen_width: int,
+#         screen_height: int,
+#         primary_aim_position: float,
+#         secondary_aim_position: float,
+#         mouse_sensitivity: float,
+#         ema_smoothing: float,
+#         mouse_jitter: int,
+#         head_priority: bool,
+#         aim_enabled: bool,
+#         output_enabled: bool,
+#     ) -> int:
+#         self.load()
+#         assert self.lib is not None
+#         if not self._has_set_aim_settings:
+#             return 0
+#         result = self.lib.di88_aim_set_aim_settings(
+#             self.handle,
+#             int(screen_width),
+#             int(screen_height),
+#             float(primary_aim_position),
+#             float(secondary_aim_position),
+#             float(mouse_sensitivity),
+#             float(ema_smoothing),
+#             int(mouse_jitter),
+#             int(bool(head_priority)),
+#             int(bool(aim_enabled)),
+#             int(bool(output_enabled)),
+#         )
+#         self._raise_if_failed(result, "di88_aim_set_aim_settings")
+#         return result
+# 
+#     def set_detection_settings(
+#         self,
+#         min_confidence: float = 0.45,
+#         max_detections: int = 64,
+#         target_fps: int = 144,
+#     ) -> int:
+#         self.load()
+#         assert self.lib is not None
+#         if not self._has_set_detection_settings:
+#             return 0
+#         result = self.lib.di88_aim_set_detection_settings(
+#             self.handle,
+#             float(min_confidence),
+#             int(max_detections),
+#             int(target_fps),
+#         )
+#         self._raise_if_failed(result, "di88_aim_set_detection_settings")
+#         return result
+# 
+#     def set_visual_settings(
+#         self,
+#         show_fov: bool = False,
+#         show_detect: bool = False,
+#         show_confidence: bool = False,
+#         show_tracers: bool = False,
+#         fov_size: int = 300,
+#         fov_color_argb: int = 0xFFFF8080,
+#         detect_color_argb: int = 0xFFFF4040,
+#         border_thickness: int = 2,
+#         opacity: float = 1.0,
+#     ) -> int:
+#         self.load()
+#         assert self.lib is not None
+#         if not self._has_set_visual_settings:
+#             return 0
+#         result = self.lib.di88_aim_set_visual_settings(
+#             self.handle,
+#             int(bool(show_fov)),
+#             int(bool(show_detect)),
+#             int(bool(show_confidence)),
+#             int(bool(show_tracers)),
+#             int(fov_size),
+#             int(fov_color_argb),
+#             int(detect_color_argb),
+#             int(border_thickness),
+#             float(opacity),
+#         )
+#         self._raise_if_failed(result, "di88_aim_set_visual_settings")
+#         return result
+# 
+#     def start(self) -> int:
+#         self.load()
+#         assert self.lib is not None
+#         result = self.lib.di88_aim_start(self.handle)
+#         self._raise_if_failed(result, "di88_aim_start")
+#         return result
+# 
+#     def stop(self) -> int:
+#         self.load()
+#         assert self.lib is not None
+#         result = self.lib.di88_aim_stop(self.handle)
+#         self._raise_if_failed(result, "di88_aim_stop")
+#         return result
+# 
+#     def set_capture_target(self, left: int, top: int, width: int, height: int) -> int:
+#         self.load()
+#         assert self.lib is not None
+#         if not self._has_set_capture_target:
+#             return 0
+#         result = self.lib.di88_aim_set_capture_target(
+#             self.handle,
+#             int(left),
+#             int(top),
+#             int(width),
+#             int(height),
+#         )
+#         self._raise_if_failed(result, "di88_aim_set_capture_target")
+#         return result
+# 
+#     def start_capture_loop(self) -> int:
+#         self.load()
+#         assert self.lib is not None
+#         if not self._has_start_capture_loop:
+#             return 0
+#         result = self.lib.di88_aim_start_capture_loop(self.handle)
+#         self._raise_if_failed(result, "di88_aim_start_capture_loop")
+#         return result
+# 
+#     def stop_capture_loop(self) -> int:
+#         self.load()
+#         assert self.lib is not None
+#         if not self._has_stop_capture_loop:
+#             return 0
+#         result = self.lib.di88_aim_stop_capture_loop(self.handle)
+#         self._raise_if_failed(result, "di88_aim_stop_capture_loop")
+#         return result
+# 
+#     def status(self) -> dict[str, object]:
+#         self.load()
+#         assert self.lib is not None
+#         status = Di88AimRuntimeStatus()
+#         result = self.lib.di88_aim_get_status(self.handle, ctypes.byref(status))
+#         self._raise_if_failed(result, "di88_aim_get_status")
+#         return {
+#             "ready": bool(status.ready),
+#             "running": bool(status.running),
+#             "status": status.status.decode("utf-8", errors="replace").rstrip("\x00"),
+#             "backend": status.backend.decode("utf-8", errors="replace").rstrip("\x00"),
+#             "capture": status.capture.decode("utf-8", errors="replace").rstrip("\x00"),
+#             "model": status.model.decode("utf-8", errors="replace").rstrip("\x00"),
+#             "fps": float(status.fps),
+#             "latency_ms": float(status.latency_ms),
+#             "capture_ms": float(status.capture_ms),
+#             "target": {
+#                 "left": int(status.target_left),
+#                 "top": int(status.target_top),
+#                 "width": int(status.target_width),
+#                 "height": int(status.target_height),
+#             },
+#             "detection_count": int(status.detection_count),
+#             "captured_frames": int(status.captured_frames),
+#             "capture_running": bool(status.capture_running),
+#             "model_loaded": bool(status.model_loaded),
+#             "input_width": int(status.input_width),
+#             "input_height": int(status.input_height),
+#             "warmup_ms": float(status.warmup_ms),
+#             "source_fps": float(status.source_fps),
+#             "loop_ms": float(status.loop_ms),
+#             "processed_frames": int(status.processed_frames),
+#             "last_error": self.last_error(),
+#         }
+# 
+#     def last_error(self) -> str:
+#         self.load()
+#         assert self.lib is not None
+#         if not self._has_last_error:
+#             return ""
+#         buffer = ctypes.create_string_buffer(1024)
+#         result = self.lib.di88_aim_get_last_error(self.handle, buffer, len(buffer))
+#         if result != 0:
+#             return ""
+#         return buffer.value.decode("utf-8", errors="replace")
+# 
+#     def available(self) -> bool:
+#         try:
+#             self.load()
+#         except Exception:
+#             return False
+#         return bool(self.handle.value)
+# 
+#     def _prepare_dll_search_paths(self) -> None:
+#         if self._dll_directory_handles or not hasattr(os, "add_dll_directory"):
+#             return
+# 
+#         candidates: list[Path] = [self.dll_path.parent]
+#         site_packages = Path(sysconfig.get_paths().get("purelib", ""))
+#         nvidia_root = site_packages / "nvidia"
+#         if nvidia_root.exists():
+#             candidates.extend(path for path in nvidia_root.glob("*/bin") if path.exists())
+#         torch_lib = site_packages / "torch" / "lib"
+#         if torch_lib.exists():
+#             candidates.append(torch_lib)
+# 
+#         seen: set[str] = set()
+#         path_prefixes: list[str] = []
+#         for directory in candidates:
+#             key = str(directory.resolve()).lower()
+#             if key in seen:
+#                 continue
+#             seen.add(key)
+#             path_prefixes.append(str(directory))
+#             try:
+#                 self._dll_directory_handles.append(os.add_dll_directory(str(directory)))
+#             except OSError:
+#                 continue
+#         if path_prefixes:
+#             current_path = os.environ.get("PATH", "")
+#             os.environ["PATH"] = os.pathsep.join(path_prefixes + [current_path])
+# 
+#     def _bind_functions(self) -> None:
+#         assert self.lib is not None
+#         self.lib.di88_aim_runtime_version.restype = ctypes.c_char_p
+# 
+#         self.lib.di88_aim_create.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+#         self.lib.di88_aim_create.restype = ctypes.c_int
+# 
+#         self.lib.di88_aim_destroy.argtypes = [ctypes.c_void_p]
+#         self.lib.di88_aim_destroy.restype = ctypes.c_int
+# 
+#         self.lib.di88_aim_configure.argtypes = [
+#             ctypes.c_void_p,
+#             ctypes.c_char_p,
+#             ctypes.c_char_p,
+#             ctypes.c_char_p,
+#         ]
+#         self.lib.di88_aim_configure.restype = ctypes.c_int
+# 
+#         self._bind_optional_function(
+#             "di88_aim_load_model",
+#             [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p],
+#         )
+#         self._bind_optional_function(
+#             "di88_aim_run_warmup_inference",
+#             [ctypes.c_void_p, ctypes.c_uint32],
+#         )
+#         self._bind_optional_function(
+#             "di88_aim_set_aim_settings",
+#             [
+#                 ctypes.c_void_p,
+#                 ctypes.c_int32,
+#                 ctypes.c_int32,
+#                 ctypes.c_float,
+#                 ctypes.c_float,
+#                 ctypes.c_float,
+#                 ctypes.c_float,
+#                 ctypes.c_int32,
+#                 ctypes.c_uint32,
+#                 ctypes.c_uint32,
+#                 ctypes.c_uint32,
+#             ],
+#         )
+#         self._bind_optional_function(
+#             "di88_aim_set_detection_settings",
+#             [ctypes.c_void_p, ctypes.c_float, ctypes.c_uint32, ctypes.c_uint32],
+#         )
+#         self._bind_optional_function(
+#             "di88_aim_set_visual_settings",
+#             [
+#                 ctypes.c_void_p,
+#                 ctypes.c_uint32,
+#                 ctypes.c_uint32,
+#                 ctypes.c_uint32,
+#                 ctypes.c_uint32,
+#                 ctypes.c_uint32,
+#                 ctypes.c_uint32,
+#                 ctypes.c_uint32,
+#                 ctypes.c_uint32,
+#                 ctypes.c_float,
+#             ],
+#         )
+#         self.lib.di88_aim_start.argtypes = [ctypes.c_void_p]
+#         self.lib.di88_aim_start.restype = ctypes.c_int
+# 
+#         self.lib.di88_aim_stop.argtypes = [ctypes.c_void_p]
+#         self.lib.di88_aim_stop.restype = ctypes.c_int
+# 
+#         self.lib.di88_aim_get_status.argtypes = [ctypes.c_void_p, ctypes.POINTER(Di88AimRuntimeStatus)]
+#         self.lib.di88_aim_get_status.restype = ctypes.c_int
+# 
+#         self._bind_optional_function(
+#             "di88_aim_set_capture_target",
+#             [ctypes.c_void_p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32],
+#         )
+#         self._bind_optional_function(
+#             "di88_aim_start_capture_loop",
+#             [ctypes.c_void_p],
+#         )
+#         self._bind_optional_function(
+#             "di88_aim_stop_capture_loop",
+#             [ctypes.c_void_p],
+#         )
+#         self._bind_optional_function(
+#             "di88_aim_get_last_error",
+#             [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32],
+#             "last_error",
+#         )
+# 
+#     def _bind_optional_function(self, name: str, argtypes: list[object], flag_name: str | None = None) -> None:
+#         assert self.lib is not None
+#         flag = f"_has_{flag_name or name.removeprefix('di88_aim_')}"
+#         try:
+#             function = getattr(self.lib, name)
+#         except AttributeError:
+#             setattr(self, flag, False)
+#             return
+#         function.argtypes = argtypes
+#         function.restype = ctypes.c_int
+#         setattr(self, flag, True)
+# 
+#     def _raise_if_failed(self, result: int, operation: str) -> None:
+#         if result == 0:
+#             return
+#         error = self.last_error()
+#         if error:
+#             raise RuntimeError(f"{operation} failed with code {result}: {error}")
+#         raise RuntimeError(f"{operation} failed with code {result}")
+# --- END FILE: AimAI/Integration/ClassAimNativeDllBridge.py ---
+
+# --- BEGIN FILE: AimAI/Integration/ClassAimRefreshController.py ---
+# from __future__ import annotations
+# 
+# import copy
+# 
+# 
+# class AimRefreshController:
+#     def __init__(self, host) -> None:
+#         self.host = host
+# 
+#     @property
+#     def backend(self):
+#         return self.host.backend
+# 
+#     def build_runtime_state(self, snapshot) -> dict:
+#         if self.backend.aim_bridge is None:
+#             return copy.deepcopy(self.backend.state.get("aim", {}))
+#         return self.host.state_builder.build_runtime_state(self.backend.aim_bridge, snapshot)
+# 
+#     def refresh_state(self, force_emit: bool = False) -> None:
+#         try:
+#             if self.backend.aim_bridge is None:
+#                 if force_emit:
+#                     self.backend.signal_update.emit(copy.deepcopy(self.backend.state))
+#                 return
+# 
+#             snapshot = self.backend.aim_bridge.snapshot()
+#             next_state = self.build_runtime_state(snapshot)
+#             changed = next_state != self.backend.state.get("aim", {})
+#             self.backend.state["aim"] = next_state
+#             if changed or force_emit:
+#                 self.backend.signal_update.emit(copy.deepcopy(self.backend.state))
+#         except Exception as exc:
+#             self.backend.state["aim"] = self.host.state_builder.build_error_state(None, exc)
+#             if force_emit:
+#                 self.backend.signal_update.emit(copy.deepcopy(self.backend.state))
+# 
+#     def refresh_overlay(self) -> None:
+#         return
+# --- END FILE: AimAI/Integration/ClassAimRefreshController.py ---
+
+# --- BEGIN FILE: AimAI/Integration/ClassAimRuntimeHost.py ---
+# from __future__ import annotations
+# 
+# from .ClassAimBindingForwarder import AimBindingForwarder
+# from .ClassAimBridgeManager import AimBridgeManager
+# from .ClassAimRefreshController import AimRefreshController
+# from .ClassAimRuntimePreparer import AimRuntimePreparer
+# from .ClassAimStateBuilder import AimStateBuilder
+# 
+# 
+# class AimRuntimeHost:
+#     def __init__(self, backend) -> None:
+#         self.backend = backend
+#         self.runtime_preparer = AimRuntimePreparer()
+#         self.state_builder = AimStateBuilder()
+#         self.bridge_manager = AimBridgeManager(self)
+#         self.refresh_controller = AimRefreshController(self)
+#         self.binding_forwarder = AimBindingForwarder(self)
+# 
+#     def build_initial_state(self, settings_data: dict | None) -> dict:
+#         return self.state_builder.build_initial_state(settings_data)
+# 
+#     def ensure_bridge(self):
+#         return self.bridge_manager.ensure_bridge()
+# 
+#     def bootstrap_runtime(self, enable_after_bootstrap: bool = False) -> None:
+#         self.bridge_manager.bootstrap_runtime(enable_after_bootstrap=enable_after_bootstrap)
+# 
+#     def prepare_runtime_settings(self, settings_data: dict | None) -> dict:
+#         return self.runtime_preparer.prepare(settings_data)
+# 
+#     def sync_integration(self, settings_data: dict | None) -> None:
+#         self.bridge_manager.sync_integration(settings_data)
+# 
+#     def build_runtime_state(self, snapshot) -> dict:
+#         return self.refresh_controller.build_runtime_state(snapshot)
+# 
+#     def start_runtime(self) -> None:
+#         self.bridge_manager.start_runtime()
+# 
+#     def stop_runtime(self) -> None:
+#         self.bridge_manager.stop_runtime()
+# 
+#     def toggle_aim_assist(self) -> None:
+#         self.bridge_manager.toggle_aim_assist()
+# 
+#     def toggle_auto_trigger(self) -> None:
+#         self.bridge_manager.toggle_auto_trigger()
+# 
+#     def refresh_state(self, force_emit: bool = False) -> None:
+#         self.refresh_controller.refresh_state(force_emit=force_emit)
+# 
+#     def refresh_overlay(self) -> None:
+#         self.refresh_controller.refresh_overlay()
+# 
+#     def update_visual_settings(self, visual_state: dict | None) -> None:
+#         if self.backend.aim_bridge is None:
+#             return
+#         self.backend.aim_bridge.apply_visual_settings(visual_state or {})
+# 
+#     def forward_mouse_binding(self, button_name: str, pressed: bool) -> None:
+#         self.binding_forwarder.forward_mouse_binding(button_name, pressed)
+# 
+#     def forward_key_binding(self, key_name: str, pressed: bool) -> None:
+#         self.binding_forwarder.forward_key_binding(key_name, pressed)
+# --- END FILE: AimAI/Integration/ClassAimRuntimeHost.py ---
+
+# --- BEGIN FILE: AimAI/Integration/ClassAimRuntimePreparer.py ---
+# from __future__ import annotations
+# 
+# import copy
+# 
+# 
+# class AimRuntimePreparer:
+#     def prepare(self, settings_data: dict | None) -> dict:
+#         prepared = copy.deepcopy(settings_data) if isinstance(settings_data, dict) else {}
+#         aim = prepared.setdefault("aim", {})
+#         runtime = aim.setdefault("runtime", {})
+#         toggles = aim.setdefault("toggles", {})
+#         dropdowns = aim.setdefault("dropdowns", {})
+# 
+#         runtime["auto_start"] = False
+#         runtime["enabled"] = False
+#         runtime["output_enabled"] = False
+#         runtime["safe_mode"] = False
+#         runtime["force_native"] = True
+#         runtime["output_backend"] = "native_dll"
+# 
+#         toggles["Aim Assist"] = False
+#         toggles["Auto Trigger"] = False
+# 
+#         capture_source = runtime.get("capture_backend") or dropdowns.get("Screen Capture Method")
+#         if not capture_source:
+#             capture_source = prepared.get("capture_mode", "DirectX")
+#         normalized_capture = self._normalize_capture_backend(str(capture_source))
+#         runtime["capture_backend"] = normalized_capture
+#         dropdowns["Screen Capture Method"] = normalized_capture
+# 
+#         meta = aim.setdefault("meta", {})
+#         if not runtime.get("model"):
+#             last_model = str(meta.get("last_loaded_model", "") or "")
+#             if last_model and last_model.upper() != "N/A":
+#                 runtime["model"] = last_model
+# 
+#         return prepared
+# 
+#     @staticmethod
+#     def _normalize_capture_backend(value: str) -> str:
+#         normalized = str(value or "DirectX").strip().upper()
+#         if normalized in {"DIRECTX", "GDI+"}:
+#             return "DirectX" if normalized == "DIRECTX" else "GDI+"
+#         if normalized == "DXCAM":
+#             return "DirectX"
+#         if normalized in {"MSS", "PIL"}:
+#             return "GDI+"
+#         return "DirectX"
+# --- END FILE: AimAI/Integration/ClassAimRuntimePreparer.py ---
+
+# --- BEGIN FILE: AimAI/Integration/ClassAimStateBuilder.py ---
+# from __future__ import annotations
+# 
+# 
+# class AimStateBuilder:
+#     def build_initial_state(self, settings_data: dict | None) -> dict:
+#         aim = settings_data.get("aim", {}) if isinstance(settings_data, dict) else {}
+#         runtime = aim.get("runtime", {}) if isinstance(aim, dict) else {}
+#         toggles = aim.get("toggles", {}) if isinstance(aim, dict) else {}
+#         dropdowns = aim.get("dropdowns", {}) if isinstance(aim, dict) else {}
+#         sliders = aim.get("sliders", {}) if isinstance(aim, dict) else {}
+#         colors = aim.get("colors", {}) if isinstance(aim, dict) else {}
+#         file_locations = aim.get("file_locations", {}) if isinstance(aim, dict) else {}
+#         minimize = aim.get("minimize", {}) if isinstance(aim, dict) else {}
+#         capture_source = runtime.get("capture_backend") or dropdowns.get("Screen Capture Method") or (settings_data.get("capture_mode", "DirectX") if isinstance(settings_data, dict) else "DirectX")
+#         capture_mode = self._normalize_capture_backend(str(capture_source))
+#         model_name = str(runtime.get("model") or aim.get("meta", {}).get("last_loaded_model") or "")
+#         return {
+#             "status": "idle",
+#             "enabled": False,
+#             "safe_mode": False,
+#             "output_backend": "native_dll",
+#             "capture_backend": capture_mode,
+#             "inference_backend": "Not loaded",
+#             "model": model_name,
+#             "fps": 0.0,
+#             "inference_ms": 0.0,
+#             "capture_ms": 0.0,
+#             "preprocess_ms": 0.0,
+#             "postprocess_ms": 0.0,
+#             "loop_ms": 0.0,
+#             "detections": 0,
+#             "runtime_source": "Native DLL Not Ready",
+#             "native_required": True,
+#             "native_ready": False,
+#             "native_error": "",
+#             "native_failures": 0,
+#             "aim_assist": bool(toggles.get("Aim Assist", False)),
+#             "auto_trigger": bool(toggles.get("Auto Trigger", False)),
+#             "show_fov": bool(toggles.get("Show FOV", False)),
+#             "show_detect": bool(toggles.get("Show Detected Player", False)),
+#             "fov_size": int(sliders.get("FOV Size", 300)),
+#             "sliders": dict(sliders),
+#             "toggles": dict(toggles),
+#             "dropdowns": dict(dropdowns),
+#             "colors": dict(colors),
+#             "file_locations": dict(file_locations),
+#             "minimize": dict(minimize),
+#             "last_error": "",
+#         }
+# 
+#     def build_runtime_state(self, aim_bridge, snapshot) -> dict:
+#         snapshot_dict = snapshot.to_dict()
+#         settings = aim_bridge.context.settings
+# 
+#         snapshot_dict["aim_assist"] = bool(settings.toggles.get("Aim Assist", False))
+#         snapshot_dict["auto_trigger"] = bool(settings.toggles.get("Auto Trigger", False))
+#         snapshot_dict["show_fov"] = bool(settings.toggles.get("Show FOV", False))
+#         snapshot_dict["show_detect"] = bool(settings.toggles.get("Show Detected Player", False))
+#         snapshot_dict["fov_size"] = int(settings.sliders.get("FOV Size", 300))
+#         snapshot_dict["sliders"] = dict(getattr(settings, "sliders", {}) or {})
+#         snapshot_dict["toggles"] = dict(getattr(settings, "toggles", {}) or {})
+#         snapshot_dict["dropdowns"] = dict(getattr(settings, "dropdowns", {}) or {})
+#         snapshot_dict["colors"] = dict(getattr(settings, "colors", {}) or {})
+#         snapshot_dict["file_locations"] = dict(getattr(settings, "file_locations", {}) or {})
+#         return snapshot_dict
+# 
+#     def build_error_state(self, settings_data: dict | None, exc: Exception) -> dict:
+#         capture_backend = "DirectX"
+#         if isinstance(settings_data, dict):
+#             aim = settings_data.get("aim", {}) if isinstance(settings_data.get("aim", {}), dict) else {}
+#             runtime = aim.get("runtime", {}) if isinstance(aim, dict) else {}
+#             dropdowns = aim.get("dropdowns", {}) if isinstance(aim, dict) else {}
+#             capture_source = runtime.get("capture_backend") or dropdowns.get("Screen Capture Method") or settings_data.get("capture_mode", "DirectX")
+#             capture_backend = self._normalize_capture_backend(str(capture_source))
+#         return {
+#             "status": "error",
+#             "enabled": False,
+#             "safe_mode": False,
+#             "output_backend": "native_dll",
+#             "capture_backend": capture_backend,
+#             "model": "",
+#             "fps": 0.0,
+#             "inference_ms": 0.0,
+#             "detections": 0,
+#             "runtime_source": "Native DLL Error",
+#             "native_required": True,
+#             "native_ready": False,
+#             "native_error": str(exc),
+#             "native_failures": 0,
+#             "aim_assist": False,
+#             "auto_trigger": False,
+#             "show_fov": False,
+#             "show_detect": False,
+#             "sliders": {},
+#             "toggles": {},
+#             "dropdowns": {},
+#             "colors": {},
+#             "file_locations": {},
+#             "last_error": str(exc),
+#         }
+# 
+#     @staticmethod
+#     def _normalize_capture_backend(value: str) -> str:
+#         normalized = str(value or "DirectX").strip().upper()
+#         if normalized == "DIRECTX":
+#             return "DirectX"
+#         if normalized == "GDI+":
+#             return "GDI+"
+#         if normalized == "DXCAM":
+#             return "DirectX"
+#         if normalized in {"MSS", "PIL"}:
+#             return "GDI+"
+#         return "DirectX"
+# --- END FILE: AimAI/Integration/ClassAimStateBuilder.py ---

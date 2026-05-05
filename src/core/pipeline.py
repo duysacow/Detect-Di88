@@ -40,6 +40,7 @@ class LatestQueue(Generic[T]):
         self._queue: Queue[T] = Queue(maxsize=maxsize)
 
     def put_latest(self, item: T) -> None:
+        # Drop phần tử cũ để pipeline luôn xử lý frame/result mới nhất, giảm latency.
         while True:
             try:
                 self._queue.put_nowait(item)
@@ -61,4 +62,4 @@ class LatestQueue(Generic[T]):
 class PipelineQueues:
     frame_queue: LatestQueue[FramePacket] = field(default_factory=LatestQueue)
     detection_queue: LatestQueue[DetectionPacket] = field(default_factory=LatestQueue)
-    command_queue: Queue[InputCommand] = field(default_factory=Queue)
+    command_queue: Queue[InputCommand] = field(default_factory=lambda: Queue(maxsize=64))

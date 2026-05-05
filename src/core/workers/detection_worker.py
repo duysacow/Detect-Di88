@@ -37,6 +37,7 @@ class DetectionWorker(QThread):
                 capture_latency_ms=getattr(frame_packet, "capture_latency_ms", 0.0),
                 detection_latency_ms=self.timer.mark("detection", start),
             )
+            # Drop result cũ để decision luôn xử lý kết quả detect mới nhất.
             self.detection_queue.put_latest(packet)
 
     def _detect(self, frame_packet) -> dict[str, object]:

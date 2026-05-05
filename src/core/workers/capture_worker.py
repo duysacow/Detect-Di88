@@ -41,4 +41,5 @@ class CaptureWorker(QThread):
                 game_active=game_active,
             )
             packet.capture_latency_ms = self.timer.mark("capture", start)
+            # Drop frame cũ để detector luôn ăn frame mới nhất, giảm latency.
             self.frame_queue.put_latest(packet)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from queue import Empty
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -67,7 +68,7 @@ class BackendThread(QThread):
             self.pipeline.detection_queue,
             self.timer,
         )
-        self.input_worker = InputWorker(self.pipeline.command_queue)
+        self.input_worker = InputWorker(self.pipeline.command_queue, self.timer)
 
         if self.pubg_config.parse_config():
             self.pubg_config.debug_print()
@@ -89,7 +90,18 @@ class BackendThread(QThread):
                 packet = self.pipeline.detection_queue.get(timeout=0.1)
             except Empty:
                 continue
+            decision_started_at = time.perf_counter()
             self.vision_controller.handle_detection(packet.updates)
+            decision_ms = self.timer.mark("decision", decision_started_at)
+            # Total lấy theo stage mới nhất để thấy nghẽn ở capture/detect/decision/input.
+            total_ms = (
+                packet.capture_latency_ms
+                + packet.detection_latency_ms
+                + decision_ms
+                + self.timer.snapshot().get("input", 0.0)
+            )
+            self.timer.set("total", total_ms)
+            self.timer.maybe_log_perf()
 
     def reload_config(self) -> None:
         self.recoil_controller.reload_config()
