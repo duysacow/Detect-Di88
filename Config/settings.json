@@ -1,0 +1,23 @@
+{
+  "capture_mode": "DXCAM",
+  "ads_mode": "HOLD",
+  "keybinds": {
+    "gui_toggle": "f1",
+    "overlay": "delete",
+    "fastloot": "caps_lock"
+  },
+  "crosshair": {
+    "active": true,
+    "style": "1: Gap Cross",
+    "color_index": 1
+  },
+  "stop_keys": [
+    "x",
+    "g",
+    "5"
+  ],
+  "scale": {},
+  "fast_loot": true,
+  "fast_loot_key": "caps_lock",
+  "overlay_key": "delete"
+}

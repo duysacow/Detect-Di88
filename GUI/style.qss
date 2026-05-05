@@ -1,0 +1,245 @@
+/* MAIN WINDOW CONTAINER */
+QFrame#MainContainer {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #252525, stop:1 #0f0f0f);
+    border-radius: 15px; 
+    border: 1px solid #444;
+}
+
+/* TITLE BAR */
+QFrame#TitleBar {
+    background-color: transparent;
+    border: none;
+}
+
+QLabel#AppTitle {
+    color: qlineargradient(x1:0, y1:0.5, x2:1, y2:0.5, stop:0 #FFFFFF, stop:1 #A0A0A0);
+    background: transparent;
+    text-transform: uppercase;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+/* WINDOW CONTROLS */
+QPushButton#MinBtn {
+    background: #333;
+    color: white;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 10px;
+}
+QPushButton#MinBtn:hover {
+    background: #555;
+}
+
+QPushButton#CloseBtn {
+    background: #333;
+    color: #ff4444;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 10px;
+}
+QPushButton#CloseBtn:hover {
+    background: #ff4444;
+    color: white;
+}
+
+/* PANELS (GUN 1, GUN 2) */
+QFrame.PanelFrame {
+    background-color: #1e1e1e;
+    border-radius: 10px;
+    border: 1px solid #333;
+}
+
+QLabel.PanelHeader {
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    background-color: rgba(0,0,0,0.2); 
+    border-radius: 5px;
+    padding: 3px;
+}
+
+/* DATA ROWS (Name, Scope, etc.) */
+QLabel.RowLabel {
+    color: #888;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+QLabel.ValueLabel {
+    color: #fff;
+    font-size: 11px;
+    font-weight: bold;
+    background-color: #252525;
+    padding: 2px 5px;
+    border-radius: 3px;
+}
+
+/* STATUS & INFO LABELS */
+QLabel#StanceLabel {
+    background-color: #2a2a2a;
+    color: #FFFF00;
+    font-size: 13px;
+    font-weight: bold;
+    border: 1px solid #444;
+    border-radius: 8px;
+}
+
+QLabel#DetectInfoLabel {
+    background-color: #2a2a2a;
+    color: #00FFFF;
+    font-size: 11px;
+    font-weight: bold;
+    border: 1px solid #444;
+    border-radius: 8px;
+}
+
+/* BUTTONS */
+QPushButton#MacroBtn {
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* SETTINGS GROUP BOX */
+QGroupBox#SettingsBox {
+    border: 1px solid #555;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+QGroupBox#SettingsBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top center;
+    padding: 0 10px;
+    color: #aaaaaa;
+    font-weight: bold;
+    background-color: #1a1a1a;
+}
+
+/* SETTING ROWS */
+QLabel.SettingLabel {
+    background-color: #2a2a2a;
+    color: #bbb; 
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 2px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+QPushButton.SettingBtn {
+    background-color: #2a2a2a;
+    color: #ccc; 
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 11px;
+}
+QPushButton.SettingBtn:hover {
+    border: 1px solid #666;
+    background-color: #333;
+}
+
+/* CAPTURE MODE BUTTONS */
+QPushButton.CaptureBtn {
+    background-color: #2a2a2a;
+    color: #888;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 11px;
+}
+QPushButton.CaptureBtn:hover {
+    background-color: #333;
+    border: 1px solid #555;
+}
+QPushButton.CaptureBtn[active="true"] {
+    background-color: #ff6b6b;
+    color: white;
+    border: 1px solid #ff5252;
+    font-weight: bold;
+}
+
+/* SPECIAL TOGGLE BUTTONS */
+QPushButton#OverlayToggleBtn[state="ON"], 
+QPushButton#FastLootToggleBtn[state="ON"] {
+    background-color: #00FF00;
+    color: #000;
+    border: 2px solid #00AA00;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+}
+QPushButton#OverlayToggleBtn[state="OFF"], 
+QPushButton#FastLootToggleBtn[state="OFF"] {
+    background-color: #666;
+    color: #ccc;
+    border: 2px solid #444;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+QPushButton#CrosshairToggleBtn[checked="true"] {
+    background-color: #00FFFF;
+    color: #000;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+}
+QPushButton#CrosshairToggleBtn[checked="false"] {
+    background-color: #444;
+    color: #aaa;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+QPushButton#AdsHideBtn {
+    background-color: #FF00FF;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+/* COMBO BOXES */
+QComboBox {
+    background-color: #2a2a2a;
+    color: white;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 10px;
+    padding: 1px 5px;
+}
+
+/* FOOTER BUTTONS */
+QPushButton#DefaultBtn {
+    background-color: #333;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 10px;
+}
+QPushButton#DefaultBtn:hover {
+    background-color: #444;
+}
+
+QPushButton#SaveBtn {
+    background-color: #ff6b6b;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 10px;
+}
+QPushButton#SaveBtn:hover {
+    background-color: #ff5252;
+}
+
+QLabel#CrosshairSectionTitle {
+    color: #aaaaaa;
+    font-size: 11px;
+    font-weight: bold;
+    margin-top: 5px;
+    margin-bottom: 2px;
+}
