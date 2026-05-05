@@ -6,29 +6,33 @@ import copy
 import concurrent.futures
 import win32api
 import win32gui
-import Utils
 import ctypes
 from PyQt6.QtCore import QThread, pyqtSignal
-from Detect.ClassCapture import ScreenCapture
-from Detect.ClassDetection import DetectionEngine
-from Recoil.ClassGhimTam import RecoilExecutor
-from ClassPubgConfig import PubgConfig
+from src.core import Utils
+from src.detect.ClassCapture import ScreenCapture
+from src.detect.ClassDetection import DetectionEngine
+from src.core.ClassGhimTam import RecoilExecutor
+from src.core.ClassPubgConfig import PubgConfig
 
 # ─── C-Style Structures for SendInput (FastLoot Logic) ───
+# Khai báo cấu trúc dữ liệu chuột cho Windows API
 class MOUSEINPUT(ctypes.Structure):
     _fields_ = [
         ("dx", ctypes.c_long), ("dy", ctypes.c_long), ("mouseData", ctypes.c_ulong),
         ("dwFlags", ctypes.c_ulong), ("time", ctypes.c_ulong), 
         ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulonglong) if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.POINTER(ctypes.c_ulong))
     ]
+# Khai báo cấu trúc dữ liệu bàn phím cho Windows API
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [
         ("wVk", ctypes.c_ushort), ("wScan", ctypes.c_ushort), ("dwFlags", ctypes.c_ulong),
         ("time", ctypes.c_ulong), 
         ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulonglong) if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.POINTER(ctypes.c_ulong))
     ]
+# Gom dữ liệu input chuột hoặc bàn phím vào một union
 class INPUT_u(ctypes.Union):
     _fields_ = [("mi", MOUSEINPUT), ("ki", KEYBDINPUT)]
+# Đóng gói một lệnh input gửi xuống Windows
 class INPUT(ctypes.Structure):
     _fields_ = [("type", ctypes.c_ulong), ("u", INPUT_u)]
 
@@ -50,6 +54,7 @@ def batch_send(inputs_list):
     ctypes.windll.user32.SendInput(n, ctypes.pointer(input_array), ctypes.sizeof(INPUT))
 
 
+# Luồng xử lý nhận diện hình ảnh và trạng thái game
 class VisionWorker(QThread):
     signal_vision_update = pyqtSignal(object)
 
@@ -192,6 +197,7 @@ class VisionWorker(QThread):
             
             time.sleep(0.02)
 
+# Luồng polling phím nóng và thao tác hỗ trợ trong game
 class KeyPollingThread(QThread):
     def __init__(self, parent=None):
         super().__init__()
@@ -202,7 +208,7 @@ class KeyPollingThread(QThread):
 
     def refresh_settings(self):
         """Pre-load settings to avoid disk I/O in the tight loop"""
-        from ClassSettings import SettingsManager
+        from src.core.ClassSettings import SettingsManager
         sm = SettingsManager()
         self.fast_loot_enabled = sm.get("fast_loot", False)
         fl_key_str = sm.get("fast_loot_key", "caps_lock").lower()
@@ -267,6 +273,7 @@ class KeyPollingThread(QThread):
         # Close Tab
         batch_send([(0x17, 0)]); time.sleep(0.02); batch_send([(0x17, 2)])
 
+# Điều phối backend, state game và đồng bộ recoil
 class BackendThread(QThread):
     signal_update = pyqtSignal(object)
     signal_message = pyqtSignal(str, str)
@@ -275,7 +282,7 @@ class BackendThread(QThread):
     def __init__(self):
         super().__init__()
         self.running = True
-        from ClassSettings import SettingsManager
+        from src.core.ClassSettings import SettingsManager
         settings = SettingsManager()
         # Ưu tiên dùng DXCAM để không làm tụt FPS game, nếu lỗi tự fallback về MSS
         self.capture = ScreenCapture(capture_mode="DXCAM")
@@ -302,7 +309,7 @@ class BackendThread(QThread):
         self.pubg_config = PubgConfig()
         
         # Hệ thống Bù lực Sens (Persistence)
-        from Recoil.ClassSensCalculator import SensitivityCalculator
+        from src.core.ClassSensCalculator import SensitivityCalculator
         self.sens_calculator = SensitivityCalculator()
 
         if self.pubg_config.parse_config():

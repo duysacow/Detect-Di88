@@ -1,13 +1,15 @@
 import cv2
 import os
 import numpy as np
+from src.core.ClassPath import get_resource_path
 
+# Nhận diện súng, phụ kiện và trạng thái từ ảnh chụp
 class DetectionEngine:
     def __init__(self, template_folder="FullHD"):
         """
         Khởi tạo hệ thống và nạp sẵn toàn bộ mẫu ảnh vào RAM (Súng, UI, Phụ kiện, Tay cầm, Scope, Tư thế).
         """
-        self.base_dir = os.path.dirname(os.path.dirname(__file__))
+        self.base_dir = get_resource_path("")
         self.template_dir = os.path.join(self.base_dir, template_folder)
         
         # Kho lưu trữ tập trung để quản lý dễ dàng

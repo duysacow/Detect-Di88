@@ -2,6 +2,7 @@ import os
 import re
 import hashlib
 
+# Đọc và theo dõi cấu hình độ nhạy của PUBG
 class PubgConfig:
     def __init__(self):
         self.config_path = os.path.join(os.environ['LOCALAPPDATA'], 

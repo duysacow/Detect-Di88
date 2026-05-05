@@ -6,14 +6,17 @@ from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QTimer
 from PyQt6.QtGui import QColor, QPalette
 
 # Thêm thư mục gốc vào path để import
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 try:
-    import Detect.ClassToaDo as roi_storage
+    from src.detect import ClassToaDo as roi_storage
 except ImportError:
     # Fallback if run incorrectly
     roi_storage = None
 
+# Đại diện một khung ROI có thể chỉnh trên overlay
 class ROIBox(QFrame):
     def __init__(self, parent, name, rect, color="#00FF00"):
         super().__init__(parent)
@@ -102,6 +105,7 @@ class ROIBox(QFrame):
         geo = self.geometry()
         return [geo.x(), geo.y(), geo.width(), geo.height()]
 
+# Giao diện chỉnh sửa và lưu các vùng ROI
 class ToolOverlayROI(QWidget):
     def __init__(self):
         super().__init__()
@@ -213,7 +217,7 @@ class ToolOverlayROI(QWidget):
         # --- LOGIC LƯU TRỰC TIẾP (Hệ thống sạch) ---
         try:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            file_path = os.path.join(base_dir, "Detect", "ClassToaDo.py")
+            file_path = os.path.join(base_dir, "src", "detect", "ClassToaDo.py")
             
             import ast
             import pprint

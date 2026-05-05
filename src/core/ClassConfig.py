@@ -4,8 +4,9 @@ from .ClassBaseRecoil import BaseRecoilData
 from pathlib import Path
 
 # Pre-load data once
-import Recoil.ClassBaseRecoil as BaseRecoilDataModule
+from . import ClassBaseRecoil as BaseRecoilDataModule
 
+# Quản lý đọc và tra cứu cấu hình recoil
 class RecoilConfig:
     def __init__(self):
         # 1. NGUỒN DỮ LIỆU TUYỆT ĐỐI
@@ -15,7 +16,7 @@ class RecoilConfig:
     def reload_data(self):
         """Reloads ClassBaseRecoil"""
         try:
-            import Recoil.ClassBaseRecoil as BaseRecoilDataModule
+            from . import ClassBaseRecoil as BaseRecoilDataModule
             importlib.reload(BaseRecoilDataModule)
             self.data = BaseRecoilDataModule.BaseRecoilData
 

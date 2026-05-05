@@ -16,6 +16,7 @@ user32.GetWindowLongW.restype = wintypes.LONG
 user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.LONG]
 user32.SetWindowLongW.restype = wintypes.LONG
 
+# Hiển thị overlay trạng thái súng và macro trong game
 class GameOverlay(QWidget):
     def __init__(self, parent=None):
         super().__init__(None)

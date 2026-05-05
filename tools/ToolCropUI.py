@@ -7,6 +7,7 @@ import numpy as np
 from PyQt6.QtWidgets import QApplication, QWidget, QRubberBand, QPushButton, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt, QRect, QSize, QPoint, QTimer
 
+# Vẽ vùng chọn crop trực tiếp trên ảnh màn hình
 class CropCanvas(QWidget):
     """Cửa sổ toàn màn hình để sếp kéo chuột cắt ảnh"""
     def __init__(self, full_img_bgr, callback):
@@ -40,6 +41,7 @@ class CropCanvas(QWidget):
                 self.callback(rect)
                 self.close()
 
+# Giao diện hỗ trợ chọn và cắt vùng ảnh thủ công
 class ToolCropUI(QWidget):
     def __init__(self):
         super().__init__()

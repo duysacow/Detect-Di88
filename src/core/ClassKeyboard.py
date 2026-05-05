@@ -37,6 +37,7 @@ def consume_injected_event(key, is_press):
                 return True
         return False
 
+# Lắng nghe và phát sự kiện bàn phím cho ứng dụng
 class KeyboardListener(QObject):
     # Signals
     signal_key_event = pyqtSignal(str, bool)  # Raw Key

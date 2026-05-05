@@ -1,3 +1,4 @@
+# Lưu dữ liệu gốc về pattern recoil và hệ số phụ kiện
 class BaseRecoilData:
     sampling_rate_ms = 8
     Shift_Boost = 1.0

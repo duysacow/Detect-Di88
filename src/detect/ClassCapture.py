@@ -2,9 +2,10 @@ import mss
 import numpy as np
 import cv2
 import ctypes
-import Detect.ClassToaDo as roi_storage
+from src.detect import ClassToaDo as roi_storage
 import dxcam # New
 
+# Chụp màn hình và cắt các vùng ROI cần nhận diện
 class ScreenCapture:
     def __init__(self, capture_mode="MSS"):
         self.capture_mode = str(capture_mode).upper()

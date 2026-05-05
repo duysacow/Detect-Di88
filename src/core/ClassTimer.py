@@ -1,6 +1,7 @@
 import ctypes
 import time
 
+# Ép hệ thống dùng timer độ chính xác cao khi app chạy
 class HighPrecisionTimer:
     """
     Enforces Windows Timer Resolution to 1ms (High Precision).

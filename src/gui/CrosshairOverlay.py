@@ -4,6 +4,7 @@ from PyQt6.QtGui import QColor, QPainter, QPen, QBrush
 import win32api
 import ctypes
 
+# Hiển thị tâm ảo nổi trên màn hình
 class CrosshairOverlay(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)

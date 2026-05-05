@@ -1,5 +1,6 @@
 import math
 
+# Tính hệ số bù độ nhạy theo scope và game config
 class SensitivityCalculator:
     def __init__(self):
         self.base_vert_sens = 1.0
@@ -49,5 +50,4 @@ class SensitivityCalculator:
 
 
         return scope_factor * vert_factor
-
 

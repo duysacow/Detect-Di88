@@ -61,22 +61,21 @@ cmd = (
 
     
     # --- DATA & ASSETS ---
-    f"{'--include-data-dir=Config=Config ' if os.path.exists('Config') else ''}"
+    f"{'--include-data-dir=src/config=src/config ' if os.path.exists('src/config') else ''}"
     f"{'--include-data-dir=FullHD=FullHD ' if os.path.exists('FullHD') else ''}"
     f"{'--include-data-dir=2K=2K ' if os.path.exists('2K') else ''}"
-    f"{'--include-data-dir=GUI=GUI ' if os.path.exists('GUI') else ''}"
+    f"{'--include-data-dir=src/gui=src/gui ' if os.path.exists('src/gui') else ''}"
     "--include-data-files=di88vp.ico=di88vp.ico "
 
     
-    "--include-package=Recoil "
-    "--include-package=GUI "
-    "--include-package=Detect "
-    "--include-package=KeyMouse "
+    "--include-package=src.core "
+    "--include-package=src.gui "
+    "--include-package=src.detect "
     
     "--output-dir=dist "
     "--output-filename=DI88VP.exe "
     
-    "MacroDi88.py"
+    "src/app/main.py"
 )
 
 result = subprocess.run(cmd, shell=True, env=os.environ)

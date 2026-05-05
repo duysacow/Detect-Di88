@@ -12,6 +12,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+# Giao diện chỉnh sửa nhanh thông số recoil
 class RecoilSettingsTool(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -96,7 +97,7 @@ class RecoilSettingsTool(QMainWindow):
     def load_data(self):
         try:
             # Import trực tiếp từ file Python để lấy giá trị hiện tại
-            from Recoil.ClassBaseRecoil import BaseRecoilData
+            from src.core.ClassBaseRecoil import BaseRecoilData
             self.recoil_data = BaseRecoilData
             # Copy dữ liệu để chỉnh sửa (tránh mutate class trực tiếp)
             self.working_weapons = dict(BaseRecoilData.Weapons)
@@ -294,7 +295,7 @@ class RecoilSettingsTool(QMainWindow):
             output = output.strip().rstrip(',') + '\n    }\n'
             
             # Ghi vào file (Sử dụng đường dẫn tuyệt đối)
-            save_path = os.path.join(PROJECT_ROOT, "Recoil", "ClassBaseRecoil.py")
+            save_path = os.path.join(PROJECT_ROOT, "src", "core", "ClassBaseRecoil.py")
             with open(save_path, 'w', encoding='utf-8') as f:
                 f.write(output)
             
@@ -306,9 +307,9 @@ class RecoilSettingsTool(QMainWindow):
 
     def restart_macro(self):
         try:
-            # Diệt đúng tiến trình đang chạy file MacroDi88.py
+            # Diệt đúng tiến trình đang chạy entrypoint chính
             # WMIC là cách an nhất trên Windows để tìm theo tên file chạy
-            cmd = 'wmic process where "commandline like \'%MacroDi88.py%\'" call terminate'
+            cmd = 'wmic process where "commandline like \'%src\\\\app\\\\main.py%\'" call terminate'
             subprocess.run(cmd, shell=True, capture_output=True)
             
             # Thêm 1 giây chờ để hệ thống giải phóng tài nguyên
@@ -316,7 +317,7 @@ class RecoilSettingsTool(QMainWindow):
             time.sleep(1)
             
             # Khởi động lại (Sử dụng đường dẫn tuyệt đối và đúng thư mục làm việc)
-            macro_path = os.path.join(PROJECT_ROOT, "MacroDi88.py")
+            macro_path = os.path.join(PROJECT_ROOT, "src", "app", "main.py")
             python_path = sys.executable
             # 0x00000010 là flag CREATE_NEW_CONSOLE trên Windows
             subprocess.Popen([python_path, macro_path], cwd=PROJECT_ROOT, creationflags=0x00000010)

@@ -8,17 +8,18 @@ import sys
 import os
 
 # IMPORT LOCAL COMPONENTS
-from GUI.GameOverlay import GameOverlay
+from src.gui.GameOverlay import GameOverlay
 
-from GUI.CrosshairOverlay import CrosshairOverlay
+from src.gui.CrosshairOverlay import CrosshairOverlay
 
-from ClassSettings import SettingsManager
-from ClassPath import get_resource_path
+from src.core.ClassSettings import SettingsManager
+from src.core.ClassPath import get_resource_path
 
 # IMPORT HELPERS & MANAGERS (STEP 6)
-from GUI.UI_Utils import create_panel, add_setting_row, create_data_row
-from GUI.TrayManager import TrayManager
+from src.gui.UI_Utils import create_panel, add_setting_row, create_data_row
+from src.gui.TrayManager import TrayManager
 
+# Quản lý cửa sổ giao diện chính của macro
 class MacroWindow(QMainWindow):
     signal_settings_changed = pyqtSignal() # Signal to notify Backend/InputBridge of config changes
 
@@ -89,7 +90,7 @@ class MacroWindow(QMainWindow):
     def load_style(self):
         """Loads the external QSS stylesheet"""
         try:
-            style_path = get_resource_path("GUI/style.qss")
+            style_path = get_resource_path("src/gui/style.qss")
             if os.path.exists(style_path):
                 with open(style_path, "r", encoding="utf-8") as f:
                     self.setStyleSheet(f.read())
@@ -958,7 +959,7 @@ class MacroWindow(QMainWindow):
         
         # Save to settings
         try:
-            from ClassSettings import SettingsManager
+            from src.core.ClassSettings import SettingsManager
             settings = SettingsManager()
             settings.set("ads_mode", new_mode)
         except Exception as e:

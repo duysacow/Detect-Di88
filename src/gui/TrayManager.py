@@ -1,7 +1,8 @@
 from PyQt6.QtWidgets import (QSystemTrayIcon, QMenu, QApplication)
 from PyQt6.QtGui import QIcon, QAction
-from ClassPath import get_resource_path
+from src.core.ClassPath import get_resource_path
 
+# Quản lý biểu tượng và menu thu nhỏ ở khay hệ thống
 class TrayManager:
     def __init__(self, main_window):
         self.main_window = main_window

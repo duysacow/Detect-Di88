@@ -3,10 +3,11 @@ import win32con
 import time
 from threading import Thread
 
+# Thực thi kéo tâm theo pattern recoil hiện tại
 class RecoilExecutor:
     def __init__(self):
         super().__init__()
-        from Recoil.ClassConfig import RecoilConfig
+        from src.core.ClassConfig import RecoilConfig
         self.config = RecoilConfig()
         
         self.running = False

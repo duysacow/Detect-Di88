@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import threading
 
+# Quản lý đọc ghi cài đặt ứng dụng
 class SettingsManager:
     """Manages application settings with persistent storage"""
     
@@ -17,7 +18,7 @@ class SettingsManager:
     
     def __init__(self):
         if not hasattr(self, 'initialized'):
-            self.settings_file = Path(__file__).parent / "Config" / "settings.json"
+            self.settings_file = Path(__file__).resolve().parents[1] / "config" / "settings.json"
             self._cache = None
             self.initialized = True
     

@@ -38,7 +38,7 @@ def select_roi_interactive():
     try:
         # Đường dẫn file tọa độ
         base_dir = os.path.dirname(os.path.dirname(__file__))
-        toa_do_path = os.path.join(base_dir, "Detect", "ClassToaDo.py")
+        toa_do_path = os.path.join(base_dir, "src", "detect", "ClassToaDo.py")
         
         with open(toa_do_path, "r", encoding="utf-8") as f:
             lines = f.readlines()

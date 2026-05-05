@@ -3,9 +3,15 @@ import os
 import time
 import ctypes
 import subprocess
-import Utils
+from pathlib import Path
 import win32api
 import win32gui
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.core import Utils
 
 
 # TẮT TOÀN BỘ THÔNG BÁO RÁC CỦA QT VÀ HỆ THỐNG
@@ -80,13 +86,13 @@ if __name__ == "__main__":
     from PyQt6.QtGui import QIcon
     from PyQt6.QtCore import QThread, pyqtSignal, QObject
 
-    from ClassPath import get_resource_path
-    from ClassTimer import HighPrecisionTimer
-    from ClassSettings import SettingsManager
-    from GUI.MacroWindow import MacroWindow
-    from ClassThread import BackendThread
-    from KeyMouse.ClassKeyboard import KeyboardListener
-    from KeyMouse.ClassMouse import MouseListener
+    from src.core.ClassPath import get_resource_path
+    from src.core.ClassTimer import HighPrecisionTimer
+    from src.core.ClassSettings import SettingsManager
+    from src.gui.MacroWindow import MacroWindow
+    from src.core.ClassThread import BackendThread
+    from src.core.ClassKeyboard import KeyboardListener
+    from src.core.ClassMouse import MouseListener
 
     # Lừa Windows nhận diện đây là App riêng biệt
     myappid = 'di88.phutho.macro.v1'
@@ -105,7 +111,7 @@ if __name__ == "__main__":
     window = MacroWindow()
     window.setWindowTitle("Di88-VP")
     
-    icon_path = os.path.join(os.path.dirname(__file__), "di88vp.ico")
+    icon_path = get_resource_path("di88vp.ico")
     window.setWindowIcon(QIcon(icon_path))
 
     # 3. KHỞI CHẠY BACKEND (Lúc này ClassDetection sẽ in dòng tóm tắt)
@@ -121,6 +127,7 @@ if __name__ == "__main__":
     window.signal_settings_changed.connect(backend.reload_config)
     
     # 4. BRIDGE VÀ LISTENERS
+    # Kết nối input chuột phím với backend và giao diện
     class InputBridge(QObject):
         def __init__(self, window, backend):
             super().__init__()
