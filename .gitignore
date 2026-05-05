@@ -1,8 +1,10 @@
-dist/ 
-*.exe 
-*.dll 
-*.onnx 
 dist/
+build/
 *.exe
 *.dll
 *.onnx
+__pycache__/
+*.pyc
+.venv/
+venv/
+.vscode/
