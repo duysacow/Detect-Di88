@@ -62,8 +62,7 @@ cmd = (
     
     # --- DATA & ASSETS ---
     f"{'--include-data-dir=src/config=src/config ' if os.path.exists('src/config') else ''}"
-    f"{'--include-data-dir=FullHD=FullHD ' if os.path.exists('FullHD') else ''}"
-    f"{'--include-data-dir=2K=2K ' if os.path.exists('2K') else ''}"
+    f"{'--include-data-dir=src/Template=src/Template ' if os.path.exists('src/Template') else ''}"
     f"{'--include-data-dir=src/gui=src/gui ' if os.path.exists('src/gui') else ''}"
     "--include-data-files=di88vp.ico=di88vp.ico "
 

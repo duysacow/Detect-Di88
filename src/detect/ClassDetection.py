@@ -10,7 +10,7 @@ class DetectionEngine:
         Khởi tạo hệ thống và nạp sẵn toàn bộ mẫu ảnh vào RAM (Súng, UI, Phụ kiện, Tay cầm, Scope, Tư thế).
         """
         self.base_dir = get_resource_path("")
-        self.template_dir = os.path.join(self.base_dir, template_folder)
+        self.template_dir = self._resolve_template_dir(template_folder)
         
         # Kho lưu trữ tập trung để quản lý dễ dàng
         self.templates = {
@@ -30,6 +30,26 @@ class DetectionEngine:
         
         # BÁO CÁO TÓM TẮT (GỌN GÀNG)
         print(f" > [SYSTEM] Detection Engine: Loaded {total_count} templates (BGR Mode)")
+
+    def _resolve_template_dir(self, template_folder):
+        candidates = [
+            os.path.join(self.base_dir, template_folder),
+            os.path.join(self.base_dir, "src", "Template", template_folder),
+        ]
+
+        aliases = {
+            "FullHD": "1920x1080",
+            "2K": "3440x1440",
+        }
+        alias_folder = aliases.get(template_folder)
+        if alias_folder:
+            candidates.append(os.path.join(self.base_dir, "src", "Template", alias_folder))
+
+        for path in candidates:
+            if os.path.exists(path):
+                return path
+
+        return candidates[0]
 
     def _load_category(self, category):
         """Hàm dùng chung để nạp toàn bộ ảnh từ một thư mục vào dictionary."""
