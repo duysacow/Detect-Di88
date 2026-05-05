@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import ctypes
+import locale
 import os
 import sys
 from pathlib import Path
@@ -928,6 +929,17 @@ class AimPanelBuilder:
         self._build_listing_box()
         self._build_advanced_toggles_box()
 
+        # Giữ control để không gãy save/load, nhưng ẩn các block AIM chi tiết khỏi tab.
+        for widget in (
+            owner.aim_shortcuts_box,
+            owner.aim_settings_box,
+            owner.aim_smoothing_box,
+            owner.aim_display_box,
+            owner.aim_listing_box,
+            owner.aim_advanced_box,
+        ):
+            widget.hide()
+
         main_row = QHBoxLayout()
         main_row.setContentsMargins(0, 0, 0, 0)
         main_row.setSpacing(6)
@@ -936,18 +948,12 @@ class AimPanelBuilder:
         left_col.setContentsMargins(0, 0, 0, 0)
         left_col.setSpacing(6)
         left_col.addWidget(owner.aim_model_box)
-        left_col.addWidget(owner.aim_settings_box)
-        left_col.addWidget(owner.aim_smoothing_box)
-        left_col.addWidget(owner.aim_display_box)
         left_col.addStretch(1)
 
         right_col = QVBoxLayout()
         right_col.setContentsMargins(0, 0, 0, 0)
         right_col.setSpacing(6)
         right_col.addWidget(owner.aim_capture_box)
-        right_col.addWidget(owner.aim_shortcuts_box)
-        right_col.addWidget(owner.aim_listing_box)
-        right_col.addWidget(owner.aim_advanced_box)
         right_col.addStretch(1)
 
         main_row.addLayout(left_col, 1)
@@ -2793,6 +2799,9 @@ class MacroWindow(QMainWindow):
         self._last_macro_toggle_state = None
         self._last_stance_style_signature = None
         self._last_game_overlay_signature = None
+        self._last_banner_signature = None
+        self._last_home_snapshot_signature = None
+        self._last_ads_status_signature = None
         self._layout_sync_timer = QTimer(self)
         self._layout_sync_timer.setSingleShot(True)
         self._layout_sync_timer.timeout.connect(self.sync_window_height_to_content)
@@ -2846,6 +2855,50 @@ class MacroWindow(QMainWindow):
         """Forces Qt to re-read properties and apply QSS"""
         widget.style().unpolish(widget)
         widget.style().polish(widget)
+
+    def log_startup_debug_info(self):
+        if getattr(self, "_startup_font_debug_logged", False):
+            return
+        self._startup_font_debug_logged = True
+
+        app = QApplication.instance()
+        app_font = app.font() if app is not None else self.font()
+        window_font = self.font()
+
+        print(
+            f"[FONT DEBUG] QApplication font family={app_font.family()} point_size={app_font.pointSize()}"
+        )
+        print(
+            f"[FONT DEBUG] MacroWindow font family={window_font.family()} point_size={window_font.pointSize()}"
+        )
+
+        for attr_name in (
+            "app_title_label",
+            "page_banner_title",
+            "btn_default_main",
+            "btn_save_main",
+            "lbl_stance",
+            "lbl_ads_status",
+        ):
+            widget = getattr(self, attr_name, None)
+            if widget is None:
+                continue
+            font = widget.font()
+            text_getter = getattr(widget, "text", None)
+            text_value = text_getter() if callable(text_getter) else ""
+            print(
+                f"[FONT DEBUG] {attr_name} font family={font.family()} point_size={font.pointSize()} text={text_value}"
+            )
+
+        print(f"[FONT DEBUG] python_default_encoding={sys.getdefaultencoding()}")
+        print(f"[FONT DEBUG] python_filesystem_encoding={sys.getfilesystemencoding()}")
+        print(
+            "[FONT DEBUG] system_locale="
+            f"{locale.setlocale(locale.LC_CTYPE, None)} preferred_encoding={locale.getpreferredencoding(False)}"
+        )
+        print(
+            "[FONT TEST] Tiếng Việt: Trạng thái | Cài Đặt Gốc | Lưu Cài Đặt | Tâm Ngắm | Độ Trễ"
+        )
 
     def style_setting_label(self, widget: QLabel):
         widget.setStyleSheet("""
@@ -3137,7 +3190,11 @@ class MacroWindow(QMainWindow):
     def update_aim_metric_style(self, widget: QLabel, text: str, color: str = "#d7d7d7"):
         if widget is None:
             return
-        widget.setText(text)
+        metric_signature = (text, color)
+        if widget.property("_aim_metric_signature") == metric_signature:
+            return
+        if widget.text() != text:
+            widget.setText(text)
         widget.setStyleSheet(f"""
             QLabel {{
                 color: {color};
@@ -3150,6 +3207,7 @@ class MacroWindow(QMainWindow):
                 padding: 0 6px;
             }}
         """)
+        widget.setProperty("_aim_metric_signature", metric_signature)
 
     def sync_crosshair_columns(self):
         if not hasattr(self, "crosshair_box"):
@@ -3270,7 +3328,7 @@ class MacroWindow(QMainWindow):
         self.page_stack.setCurrentWidget(target)
         self.update_nav_button_styles()
         self.update_main_page_banner()
-        self._layout_sync_timer.start(16)
+        self._layout_sync_timer.start(120)
 
     def update_main_page_banner(self):
         if not hasattr(self, "page_banner_title"):
@@ -3344,13 +3402,40 @@ class MacroWindow(QMainWindow):
             },
         }
         banner = banner_map.get(current, banner_map["home"])
+        banner_signature = (
+            current,
+            banner["eyebrow"],
+            banner["title"],
+            banner["subtitle"],
+            banner["badge"],
+            banner["gradient_start"],
+            banner["gradient_end"],
+            banner["hover_start"],
+            banner["hover_end"],
+            banner["border"],
+            banner["hover_border"],
+            banner["eyebrow_color"],
+            banner["badge_color"],
+            banner["badge_bg"],
+            banner["badge_border"],
+            banner["badge_hover_bg"],
+            banner["badge_hover_border"],
+            banner["badge_shadow"],
+        )
+        if self._last_banner_signature == banner_signature:
+            return
+        self._last_banner_signature = banner_signature
         title = banner["title"]
         subtitle = banner["subtitle"]
         badge = banner["badge"]
-        self.page_banner_title.setText(title)
-        self.page_banner_subtitle.setText(subtitle)
-        self.page_banner_badge.setText(badge)
-        self.page_banner_eyebrow.setText(banner["eyebrow"])
+        if self.page_banner_title.text() != title:
+            self.page_banner_title.setText(title)
+        if self.page_banner_subtitle.text() != subtitle:
+            self.page_banner_subtitle.setText(subtitle)
+        if self.page_banner_badge.text() != badge:
+            self.page_banner_badge.setText(badge)
+        if self.page_banner_eyebrow.text() != banner["eyebrow"]:
+            self.page_banner_eyebrow.setText(banner["eyebrow"])
         self.page_banner_eyebrow.setStyleSheet(f"""
             QLabel {{
                 color: {banner["eyebrow_color"]};
@@ -3529,31 +3614,37 @@ class MacroWindow(QMainWindow):
         aim_color = "#00ffaa" if aim_text == "ON" else "#ff7070"
 
         if hasattr(self, "home_metric_macro_value"):
-            self.home_metric_macro_value.setText(macro_text)
+            if self.home_metric_macro_value.text() != macro_text:
+                self.home_metric_macro_value.setText(macro_text)
             self.home_metric_macro_value.setStyleSheet(f"QLabel {{ color: {macro_color}; font-size: 14px; font-weight: 900; background: transparent; border: none; }}")
         if hasattr(self, "home_metric_macro_value_hint"):
             # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
             self.home_metric_macro_value_hint.setVisible(macro_text == "ON")
         if hasattr(self, "home_metric_aim_value"):
-            self.home_metric_aim_value.setText(aim_text)
+            if self.home_metric_aim_value.text() != aim_text:
+                self.home_metric_aim_value.setText(aim_text)
             self.home_metric_aim_value.setStyleSheet(f"QLabel {{ color: {aim_color}; font-size: 14px; font-weight: 900; background: transparent; border: none; }}")
         if hasattr(self, "home_metric_aim_value_hint"):
             # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
             self.home_metric_aim_value_hint.setVisible(aim_text == "ON")
         if hasattr(self, "home_metric_fps_value"):
-            self.home_metric_fps_value.setText(fps_text)
+            if self.home_metric_fps_value.text() != fps_text:
+                self.home_metric_fps_value.setText(fps_text)
         if hasattr(self, "home_metric_inf_value"):
-            self.home_metric_inf_value.setText(inf_text)
+            if self.home_metric_inf_value.text() != inf_text:
+                self.home_metric_inf_value.setText(inf_text)
         if hasattr(self, "home_metric_fps_badge"):
             self._update_home_metric_badge(self.home_metric_fps_badge, runtime_active, "#8dffb1")
         if hasattr(self, "home_metric_inf_badge"):
             self._update_home_metric_badge(self.home_metric_inf_badge, runtime_active, "#ffcf5a")
 
         if hasattr(self, "home_macro_status_value"):
-            self.home_macro_status_value.setText(macro_text)
+            if self.home_macro_status_value.text() != macro_text:
+                self.home_macro_status_value.setText(macro_text)
             self.home_macro_status_value.setStyleSheet(f"QLabel {{ color: {macro_color}; font-size: 12px; font-weight: 800; background: transparent; border: none; }}")
         if hasattr(self, "home_aim_status_value"):
-            self.home_aim_status_value.setText(aim_text)
+            if self.home_aim_status_value.text() != aim_text:
+                self.home_aim_status_value.setText(aim_text)
             self.home_aim_status_value.setStyleSheet(f"QLabel {{ color: {aim_color}; font-size: 12px; font-weight: 800; background: transparent; border: none; }}")
 
         if hasattr(self, "home_macro_toggle_btn"):
@@ -3583,6 +3674,23 @@ class MacroWindow(QMainWindow):
         elif hasattr(self, "lbl_aim_backend_info") and self.lbl_aim_backend_info:
             backend_text = self.lbl_aim_backend_info.text().replace("Backend:", "").strip() or backend_text
 
+        snapshot_signature = (
+            macro_text,
+            aim_text,
+            fps_text,
+            inf_text,
+            runtime_active,
+            stance_text,
+            ads_text,
+            capture_text,
+            model_text,
+            backend_text,
+            aim_capture_text,
+        )
+        if self._last_home_snapshot_signature == snapshot_signature:
+            return
+        self._last_home_snapshot_signature = snapshot_signature
+
         for attr_name, text in (
             ("home_macro_stance_value", stance_text),
             ("home_macro_ads_value", ads_text),
@@ -3592,7 +3700,7 @@ class MacroWindow(QMainWindow):
             ("home_aim_capture_value", aim_capture_text),
         ):
             label = getattr(self, attr_name, None)
-            if label is not None:
+            if label is not None and label.text() != text:
                 label.setText(text)
 
         self.update_main_page_banner()
@@ -4148,7 +4256,7 @@ class MacroWindow(QMainWindow):
         self._hover_hint_anchor = None
         self._hover_hint_last_pos = None
         self._hover_hint_timer = QTimer(self)
-        self._hover_hint_timer.setInterval(16)
+        self._hover_hint_timer.setInterval(100)
         self._hover_hint_timer.timeout.connect(self._tick_hover_hint)
 
         self.hover_hint_targets = {}
@@ -6862,7 +6970,13 @@ class MacroWindow(QMainWindow):
         mode_upper = (mode or "HOLD").upper()
         display_mode = "TOGGLE" if mode_upper == "CLICK" else mode_upper
         color = "#00ffaa" if display_mode == "HOLD" else "#ffd166"
-        self.lbl_ads_status.setText(f"ADS : {display_mode}")
+        ads_signature = (display_mode, color)
+        if self._last_ads_status_signature == ads_signature:
+            return
+        self._last_ads_status_signature = ads_signature
+        ads_text = f"ADS : {display_mode}"
+        if self.lbl_ads_status.text() != ads_text:
+            self.lbl_ads_status.setText(ads_text)
         self.lbl_ads_status.setStyleSheet(f"""
             QLabel {{
                 color: {color};
@@ -7353,7 +7467,7 @@ class MacroWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
         self.position_aim_model_notice()
-        self._layout_sync_timer.start(16)
+        self._layout_sync_timer.start(120)
         if hasattr(self, "last_data"):
             self.update_aim_visual_overlay(self.last_data)
 

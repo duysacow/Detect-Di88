@@ -78,7 +78,8 @@ if __name__ == "__main__":
     _self_elevate_and_whitelist()
     _optimize_cpu_and_priority()
 
-    from PyQt6.QtGui import QIcon
+    from PyQt6.QtCore import QTimer
+    from PyQt6.QtGui import QFont, QIcon
     from PyQt6.QtWidgets import QApplication
 
     from src.core.backend import BackendThread
@@ -101,6 +102,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setApplicationName("Di88-VP")
     app.setApplicationDisplayName("Di88-VP")
+    app.setFont(QFont("Segoe UI", 9))
 
     window = MacroWindow()
     window.setWindowTitle("Di88-VP")
@@ -142,6 +144,7 @@ if __name__ == "__main__":
 
     backend.start()
     window.show()
+    QTimer.singleShot(0, window.log_startup_debug_info)
 
     print(" > [SYSTEM] Macro DI88-VP is Ready!")
     sys.exit(app.exec())
