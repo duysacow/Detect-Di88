@@ -5,6 +5,6 @@ build/
 *.onnx
 __pycache__/
 *.pyc
-.venv/
 venv/
+.venv/
 .vscode/
