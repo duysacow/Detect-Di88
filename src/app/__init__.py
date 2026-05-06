@@ -1,1 +1,1 @@
-
+"""Application entry package."""

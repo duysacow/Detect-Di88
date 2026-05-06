@@ -1,8 +1,12 @@
+import logging
+import threading
 import time
-from threading import Thread
+from threading import Event, Thread
 
 import win32api
 import win32con
+
+logger = logging.getLogger(__name__)
 
 
 # Thực thi kéo tâm theo pattern recoil hiện tại
@@ -15,6 +19,7 @@ class RecoilExecutor:
 
         self.running = False
         self.thread = None
+        self._stop_event = Event()
 
         self.pattern = []
         self.current_index = 0
@@ -44,11 +49,22 @@ class RecoilExecutor:
         self.full_pattern_done = False  # Reset mỗi lần bắt đầu bắn
 
         self.running = True
-        self.thread = Thread(target=self._recoil_loop, daemon=True)
+        self._stop_event.clear()
+        self.thread = Thread(target=self._recoil_loop, name="_recoil_loop", daemon=True)
         self.thread.start()
 
     def stop_recoil(self):
         self.running = False
+        self._stop_event.set()
+        thread = self.thread
+        if thread is None or thread is threading.current_thread():
+            return
+        thread.join(0.15)
+        if thread.is_alive():
+            logger.warning("recoil loop did not stop within timeout")
+        else:
+            logger.info("recoil loop stopped")
+        self.thread = None
 
     def reload_config(self):
         if self.config:
@@ -65,7 +81,7 @@ class RecoilExecutor:
 
         from src.core import utils as Utils
 
-        while self.running:
+        while self.running and not self._stop_event.is_set():
             # 1. KIỂM TRA CỬA SỔ GAME
             if not Utils.is_game_active():
                 self.running = False
@@ -98,6 +114,7 @@ class RecoilExecutor:
             # Đảm bảo nhịp 8ms chuẩn xác
             curr_t = time.perf_counter()
             if next_time > curr_t:
-                time.sleep(next_time - curr_t)
+                if self._stop_event.wait(next_time - curr_t):
+                    break
             else:
                 next_time = curr_t

@@ -1,19 +1,21 @@
 import ctypes
+import logging
 import os
+import re
 
 import cv2
-import numpy as np
 
 from src.core.path_utils import get_resource_path
+from src.core.settings import SettingsManager
+
+logger = logging.getLogger(__name__)
 
 
-# Nhận diện súng, phụ kiện và trạng thái từ ảnh chụp
+# Nhận diện súng, phụ kiện và trạng thái từ ảnh chụp.
 class DetectionEngine:
     def __init__(self, template_folder=None, screen_width=None, screen_height=None):
-        """
-        Khởi tạo hệ thống và nạp sẵn toàn bộ mẫu ảnh vào RAM (Súng, UI, Phụ kiện, Tay cầm, Scope, Tư thế).
-        """
         self.base_dir = get_resource_path("")
+        self.settings = SettingsManager()
         self.screen_width, self.screen_height = self._resolve_screen_size(
             screen_width, screen_height
         )
@@ -24,8 +26,8 @@ class DetectionEngine:
         self.template_folder, self.template_dir = self._resolve_template_dir(
             requested_template_folder
         )
+        self.thresholds = self._load_thresholds()
 
-        # Kho lưu trữ tập trung để quản lý dễ dàng
         self.templates = {
             "weapons": {},
             "ui": {},
@@ -33,22 +35,43 @@ class DetectionEngine:
             "grip": {},
             "scopes": {},
             "stances": {},
-            "dieukien": {},  # Bảng điều kiện mở khóa detect
+            "dieukien": {},
         }
 
-        # Nạp toàn bộ các danh mục
         total_count = 0
-        for category in self.templates.keys():
+        for category in self.templates:
             total_count += self._load_category(category)
 
-        # BÁO CÁO TÓM TẮT (GỌN GÀNG)
-        print(
-            f" > [SYSTEM] Template: {self.template_folder}"
-            f" ({self.screen_width}x{self.screen_height})"
+        logger.info(
+            "Template selected: %s (%sx%s)",
+            self.template_folder,
+            self.screen_width,
+            self.screen_height,
         )
-        print(
-            f" > [SYSTEM] Detection Engine: Loaded {total_count} templates (BGR Mode)"
-        )
+        logger.info("Detection engine loaded %s templates (BGR mode)", total_count)
+
+    def _load_thresholds(self) -> dict[str, float]:
+        return {
+            "default_match": float(
+                self.settings.get("detection.thresholds.default_match", 0.8)
+            ),
+            "weapon_name": float(
+                self.settings.get("detection.thresholds.weapon_name", 0.8)
+            ),
+            "accessory": float(
+                self.settings.get("detection.thresholds.accessory", 0.8)
+            ),
+            "grip": float(self.settings.get("detection.thresholds.grip", 0.8)),
+            "scope": float(self.settings.get("detection.thresholds.scope", 0.8)),
+            "ui_anchor": float(
+                self.settings.get("detection.thresholds.ui_anchor", 0.65)
+            ),
+            "ui_gate": float(self.settings.get("detection.thresholds.ui_gate", 0.4)),
+            "stance": float(self.settings.get("detection.thresholds.stance", 0.6)),
+            "early_exit": float(
+                self.settings.get("detection.thresholds.early_exit", 0.98)
+            ),
+        }
 
     def _resolve_screen_size(self, screen_width, screen_height):
         if screen_width is not None and screen_height is not None:
@@ -60,7 +83,6 @@ class DetectionEngine:
     def _select_template_folder(self, screen_width, screen_height):
         if screen_height >= 1440:
             return "3440x1440"
-
         return "1920x1080"
 
     def _resolve_template_dir(self, template_folder):
@@ -74,45 +96,51 @@ class DetectionEngine:
                 return template_folder, path
 
         fallback_folder = "1920x1080"
-        fallback_path = os.path.join(self.base_dir, "src", "Template", "1920x1080")
-        print(
-            " > [WARNING] Template Directory:"
-            f" folder '{template_folder}' not found,"
-            f" fallback path={fallback_path}"
+        fallback_path = os.path.join(self.base_dir, "src", "Template", fallback_folder)
+        logger.warning(
+            "Template folder '%s' not found, fallback path=%s",
+            template_folder,
+            fallback_path,
         )
         return fallback_folder, fallback_path
 
     def _load_category(self, category):
-        """Hàm dùng chung để nạp toàn bộ ảnh từ một thư mục vào dictionary."""
-        path = os.path.join(self.template_dir, category)
+        category_dir = {"stances": "stance"}.get(category, category)
+        path = os.path.join(self.template_dir, category_dir)
         if not os.path.exists(path):
             return 0
 
         count = 0
         for file in os.listdir(path):
-            if file.lower().endswith((".png", ".jpg", ".jpeg")):
-                full_path = os.path.join(path, file)
-                # ĐỌC ẢNH MÀU (BGR) để phân biệt chính xác theo yêu cầu
-                img = cv2.imread(full_path)
-                if img is not None:
-                    # Lưu tên nguyên bản (viết hoa) - Không xóa hậu tố để tránh lỗi VSS -> V
-                    name = os.path.splitext(file)[0].upper()
-                    self.templates[category][name] = img
-                    count += 1
+            if not file.lower().endswith((".png", ".jpg", ".jpeg")):
+                continue
+
+            full_path = os.path.join(path, file)
+            img = cv2.imread(full_path)
+            if img is None:
+                logger.warning("Failed to load template image: %s", full_path)
+                continue
+
+            name = os.path.splitext(file)[0].upper()
+            self.templates[category][name] = img
+            count += 1
         return count
 
-    def _match(self, roi, category, threshold=0.8):
+    def _match_result(self, roi, category, threshold=None):
         if category not in self.templates or not self.templates[category]:
-            return "NONE"
+            return "NONE", -1.0
 
-        max_val = -1
+        threshold = (
+            self.thresholds["default_match"] if threshold is None else float(threshold)
+        )
+        early_exit = self.thresholds["early_exit"]
+        max_val = -1.0
         best_name = "NONE"
 
         for name, tpl in self.templates[category].items():
             if tpl.shape[0] > roi.shape[0] or tpl.shape[1] > roi.shape[1]:
                 continue
 
-            # So sánh ảnh MÀU (BGR)
             res = cv2.matchTemplate(roi, tpl, cv2.TM_CCOEFF_NORMED)
             _, val, _, _ = cv2.minMaxLoc(res)
 
@@ -120,27 +148,31 @@ class DetectionEngine:
                 max_val = val
                 best_name = name
 
-            if val > 0.98:  # Early exit optimization
+            if val > early_exit:
                 break
 
-        return best_name if max_val >= threshold else "NONE"
+        if max_val >= threshold:
+            return best_name, float(max_val)
+        return "NONE", float(max_val)
 
-    # --- CÁC HÀM PUBLIC ĐỂ CLASS THREAD GỌI ---
+    def _match(self, roi, category, threshold=None):
+        best_name, _ = self._match_result(roi, category, threshold)
+        return best_name
 
-    def detect_weapon_name(self, roi, threshold=0.8):
-        # TRẢ VỀ TÊN NGUYÊN BẢN 100% (Ví dụ: VSS, M16A4, ACE32 giữ nguyên)
+    def detect_weapon_name(self, roi, threshold=None):
+        threshold = self.thresholds["weapon_name"] if threshold is None else threshold
         return self._match(roi, "weapons", threshold)
 
-    def detect_ui_anchor(self, roi, threshold=0.65):
-        """Kiểm tra xem cái 'dieukien' có xuất hiện tại ROI này không"""
+    def detect_ui_anchor(self, roi, threshold=None):
+        threshold = self.thresholds["ui_anchor"] if threshold is None else threshold
         return self._match(roi, "dieukien", threshold)
 
-    def detect_accessory(self, roi, threshold=0.8):
+    def detect_accessory(self, roi, threshold=None):
+        threshold = self.thresholds["accessory"] if threshold is None else threshold
         res = self._match(roi, "accessories", threshold)
         if res == "NONE":
             return "NONE"
 
-        # Gộp các biến thể (GiamGiat, GiamGiat1 -> GiamGiat)
         name = res.upper()
         if "GIAMGIAT" in name:
             return "GiamGiat"
@@ -156,12 +188,12 @@ class DetectionEngine:
             return "GThanhSMG"
         return res
 
-    def detect_grip(self, roi, threshold=0.8):
+    def detect_grip(self, roi, threshold=None):
+        threshold = self.thresholds["grip"] if threshold is None else threshold
         res = self._match(roi, "grip", threshold)
         if res == "NONE":
             return "NONE"
 
-        # Gộp các biến thể (tcDung, tcDung1 -> tcDung)
         name = res.upper()
         if "TCDUNG" in name:
             return "tcDung"
@@ -177,18 +209,15 @@ class DetectionEngine:
             return "tcNhe"
         return res
 
-    def detect_scope(self, roi, threshold=0.8):
+    def detect_scope(self, roi, threshold=None):
+        threshold = self.thresholds["scope"] if threshold is None else threshold
         res = self._match(roi, "scopes", threshold)
         if res == "NONE":
             return "NONE"
 
         name = res.upper()
-        # Xử lý đặc biệt cho Scope Kết Hợp
         if "SCOPEKH" in name:
             return "ScopeKH"
-
-        # Gộp các biến thể (Scope1x, Scope1s -> Scope1)
-        import re
 
         match = re.search(r"SCOPE(\d+)", name)
         if match:
@@ -196,16 +225,28 @@ class DetectionEngine:
 
         return res
 
-    def detect_stance(self, roi, threshold=0.6):
-        res = self._match(roi, "stances", threshold)
-        if res == "NONE":
+    def _map_stance_template_name(self, template_name: str) -> str | None:
+        upper = str(template_name or "").upper()
+        if upper in {"DUNG", "STAND", "STANDING"}:
             return "Stand"
-
-        name = res.upper()
-        if "STANDING" in name:
-            return "Stand"
-        if "CROUCHING" in name:
+        if upper in {"NGOI", "CROUCH", "CROUCHING", "SIT", "SITTING"}:
             return "Crouch"
-        if "PRONE" in name:
+        if upper in {"NAM", "PRONE", "LYING"}:
             return "Prone"
-        return "Stand"
+        return None
+
+    def detect_stance(self, roi, threshold=None, roi_name="stance"):
+        threshold = self.thresholds["stance"] if threshold is None else threshold
+        template_name, score = self._match_result(roi, "stances", threshold)
+        matched_label = (
+            None if template_name == "NONE" else self._map_stance_template_name(template_name)
+        )
+        roi_desc = f"{roi_name}[{roi.shape[1]}x{roi.shape[0]}]"
+        logger.info(
+            "stance detect: template_name=%s matched_label=%s score=%.4f roi=%s",
+            template_name,
+            matched_label or "NONE",
+            score,
+            roi_desc,
+        )
+        return matched_label

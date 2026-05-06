@@ -2,18 +2,61 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+BUILD_OUTPUT_DIR = PROJECT_ROOT / "dist"
+BUILD_WORK_DIR = PROJECT_ROOT / "MacroDi88.build"
+ONEFILE_WORK_DIR = PROJECT_ROOT / "MacroDi88.onefile-build"
+ONEFILE_TEMP_SPEC = "{TEMP}/DI88VP_{TIME}"
+GAME_PATH_TOKENS = (
+    "pubg",
+    "tslgame",
+    "binaries/win64",
+    "steamapps/common/pubg",
+)
+
+
+def _normalize_path(path_value):
+    return str(Path(path_value).resolve()).replace("\\", "/").lower()
+
+
+def _is_disallowed_game_path(path_value):
+    normalized = _normalize_path(path_value)
+    return any(token in normalized for token in GAME_PATH_TOKENS)
+
+
+def _ensure_safe_build_paths():
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    guarded_paths = {
+        "project_root": PROJECT_ROOT,
+        "build_output_dir": BUILD_OUTPUT_DIR,
+        "build_work_dir": BUILD_WORK_DIR,
+        "onefile_work_dir": ONEFILE_WORK_DIR,
+        "temp_root": temp_root,
+    }
+    for label, path_value in guarded_paths.items():
+        if _is_disallowed_game_path(path_value):
+            print(f"[WARN] Blocked unsafe {label}: {path_value}")
+            sys.exit(1)
+
+    if BUILD_OUTPUT_DIR != PROJECT_ROOT / "dist":
+        print(f"[WARN] Build output must stay inside dist/: {BUILD_OUTPUT_DIR}")
+        sys.exit(1)
 
 # 1. --- DANG KIEM TRA MOI TRUONG ---
 print("[*] Dang kiem tra moi truong: Python, Nuitka, GCC...")
+_ensure_safe_build_paths()
 mingw_bin = r"C:\msys64\mingw64\bin"
 if mingw_bin not in os.environ.get("PATH", ""):
     os.environ["PATH"] = mingw_bin + os.pathsep + os.environ.get("PATH", "")
 
 # 2. --- DANG DON DEP LICH SU BUILD ---
 print("[*] Dang don dep lich su build (dist, .build)...")
-build_dir = "dist"
-build_work_dir = "MacroDi88.build"
-onefile_work_dir = "MacroDi88.onefile-build"
+build_dir = str(BUILD_OUTPUT_DIR)
+build_work_dir = str(BUILD_WORK_DIR)
+onefile_work_dir = str(ONEFILE_WORK_DIR)
 
 for d in [build_dir, build_work_dir, onefile_work_dir]:
     if os.path.exists(d):
@@ -31,7 +74,7 @@ cmd = (
     "--onefile "
     # Tắt nén để né AV và tăng tốc build
     "--onefile-no-compression "
-    '--onefile-tempdir-spec="{TEMP}/DI88VP_{TIME}" '
+    f'--onefile-tempdir-spec="{ONEFILE_TEMP_SPEC}" '
     "--windows-console-mode=disable "
     "--remove-output "
     "--enable-plugin=pyqt6 "
@@ -67,7 +110,7 @@ cmd = (
     "--include-package=src.gui "
     "--include-package=src.input "
     "--include-package=src.recoil "
-    "--output-dir=dist "
+    f'--output-dir="{BUILD_OUTPUT_DIR}" '
     "--output-filename=DI88VP.exe "
     "src/app/main.py"
 )

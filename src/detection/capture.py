@@ -1,16 +1,20 @@
 import ctypes
+import logging
+import threading
 
 import cv2
 import dxcam  # New
 import mss
 import numpy as np
 
+from src.core.path_utils import get_user_data_path
 from src.detection import roi_storage
 
+logger = logging.getLogger(__name__)
 
 # Chụp màn hình và cắt các vùng ROI cần nhận diện
 class ScreenCapture:
-    def __init__(self, capture_mode="MSS"):
+    def __init__(self, capture_mode="DXCAM"):
         self.capture_mode = str(capture_mode).upper()
 
         # 0. Init DXCam if needed
@@ -21,7 +25,7 @@ class ScreenCapture:
             except Exception:
                 self.capture_mode = "MSS"
 
-        self._sct = None  # Sẽ khởi tạo lười (Lazy) trong từng luồng để an toàn
+        self._thread_state = threading.local()  # MSS handle theo từng thread
         self.bbox = {}  # Khởi tạo tường minh để linter không báo lỗi
 
         # Lấy độ phân giải màn hình
@@ -49,9 +53,11 @@ class ScreenCapture:
 
     def get_sct(self):
         """Khởi tạo mss.mss() riêng cho từng luồng (Thread-safe)"""
-        if self._sct is None:
-            self._sct = mss.mss()
-        return self._sct
+        sct = getattr(self._thread_state, "sct", None)
+        if sct is None:
+            sct = mss.mss()
+            self._thread_state.sct = sct
+        return sct
 
     def convert_list_to_dict(self, saved_rois):
         # Convert List [x,y,w,h] -> Dict {"left": x, ...}
@@ -152,6 +158,42 @@ class ScreenCapture:
                 img, name, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1
             )
 
-        filename = "debug_roi_preview.jpg"
-        cv2.imwrite(filename, img)
-        return filename
+        filename = get_user_data_path("debug/debug_roi_preview.jpg")
+        filename.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(filename), img)
+        return str(filename)
+
+    def close_current_thread_capture(self):
+        sct = getattr(self._thread_state, "sct", None)
+        try:
+            if sct is not None:
+                close = getattr(sct, "close", None)
+                if callable(close):
+                    close()
+        except AttributeError as exc:
+            logger.warning(
+                "Skipping MSS close for current thread due to partial thread-local state: %s",
+                exc,
+            )
+        except Exception:
+            logger.warning("Failed closing MSS capture in current thread", exc_info=True)
+        finally:
+            self._thread_state.sct = None
+
+    def close(self):
+        try:
+            if self.camera is not None:
+                stop = getattr(self.camera, "stop", None)
+                release = getattr(self.camera, "release", None)
+                if callable(stop):
+                    stop()
+                elif callable(release):
+                    release()
+        except Exception:
+            logger.exception("Failed releasing DXCAM camera")
+        finally:
+            self.camera = None
+
+        self.close_current_thread_capture()
+
+        logger.info("screen capture released")

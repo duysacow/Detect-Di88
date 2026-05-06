@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from queue import Empty
 
@@ -12,6 +13,7 @@ from src.core.controllers.vision_controller import VisionController
 from src.core.pipeline import PipelineQueues
 from src.core.pubg_config import PubgConfig
 from src.core.state import StateStore
+from src.core.settings import SettingsManager
 from src.core.timing import StageTimer
 from src.core.workers.capture_worker import CaptureWorker
 from src.core.workers.detection_worker import DetectionWorker
@@ -20,8 +22,10 @@ from src.detection.capture import ScreenCapture
 from src.detection.detection_engine import DetectionEngine
 from src.recoil.executor import RecoilExecutor
 
+logger = logging.getLogger(__name__)
 
-# Facade backend giữ API cũ nhưng chạy theo pipeline realtime
+
+# Facade backend giữ API cũ nhưng chạy theo pipeline realtime.
 class BackendThread(QThread):
     signal_update = pyqtSignal(object)
     signal_message = pyqtSignal(str, str)
@@ -30,7 +34,19 @@ class BackendThread(QThread):
     def __init__(self) -> None:
         super().__init__()
         self.running = True
-        self.capture = ScreenCapture(capture_mode="DXCAM")
+        raw_capture_mode = str(SettingsManager().get("capture_mode", "DXCAM") or "DXCAM").upper()
+        capture_mode = {
+            "DXCAM": "DXCAM",
+            "DIRECTX": "DXCAM",
+            "DXGI": "DXCAM",
+            "NATIVE": "DXCAM",
+            "AUTO": "DXCAM",
+            "MSS": "MSS",
+            "GDI": "MSS",
+            "GDI+": "MSS",
+            "PIL": "MSS",
+        }.get(raw_capture_mode, "DXCAM")
+        self.capture = ScreenCapture(capture_mode=capture_mode)
         self.detector = DetectionEngine(
             screen_width=self.capture.width,
             screen_height=self.capture.height,
@@ -85,23 +101,28 @@ class BackendThread(QThread):
         self.detection_worker.start()
         self.input_worker.start()
 
-        while self.running:
-            try:
-                packet = self.pipeline.detection_queue.get(timeout=0.1)
-            except Empty:
-                continue
-            decision_started_at = time.perf_counter()
-            self.vision_controller.handle_detection(packet.updates)
-            decision_ms = self.timer.mark("decision", decision_started_at)
-            # Total lấy theo stage mới nhất để thấy nghẽn ở capture/detect/decision/input.
-            total_ms = (
-                packet.capture_latency_ms
-                + packet.detection_latency_ms
-                + decision_ms
-                + self.timer.snapshot().get("input", 0.0)
-            )
-            self.timer.set("total", total_ms)
-            self.timer.maybe_log_perf()
+        try:
+            while self.running:
+                try:
+                    packet = self.pipeline.detection_queue.get(timeout=0.1)
+                except Empty:
+                    continue
+
+                decision_started_at = time.perf_counter()
+                self.vision_controller.handle_detection(packet.updates)
+                decision_ms = self.timer.mark("decision", decision_started_at)
+                total_ms = (
+                    packet.capture_latency_ms
+                    + packet.detection_latency_ms
+                    + decision_ms
+                    + self.timer.snapshot().get("input", 0.0)
+                )
+                self.timer.set("total", total_ms)
+                self.timer.maybe_log_perf()
+        finally:
+            self._stop_workers()
+            self._wait_workers()
+            self.capture.close()
 
     def reload_config(self) -> None:
         self.recoil_controller.reload_config()
@@ -124,10 +145,44 @@ class BackendThread(QThread):
         self.input_controller.toggle_hybrid_mode()
 
     def stop(self) -> None:
+        logger.info("Backend stop requested")
         self.running = False
+        self.recoil_controller.stop_recoil()
         self.vision_controller.stop()
         self.input_controller.stop()
-        self.capture_worker.running = False
-        self.detection_worker.running = False
-        self.input_worker.running = False
+        self._stop_workers()
+        if not self.isRunning():
+            self.capture.close()
         self.quit()
+
+    def _stop_workers(self) -> None:
+        for worker in (self.capture_worker, self.detection_worker, self.input_worker):
+            try:
+                worker.stop()
+            except Exception:
+                logger.exception("Failed to stop worker %s", worker.__class__.__name__)
+
+    def _wait_workers(self, timeout_ms: int = 300) -> None:
+        all_stopped = True
+        for worker in (self.capture_worker, self.detection_worker, self.input_worker):
+            try:
+                if worker.isRunning():
+                    logger.info(
+                        "Waiting worker %s for %sms",
+                        worker.__class__.__name__,
+                        timeout_ms,
+                    )
+                    worker.wait(timeout_ms)
+                if worker.isRunning():
+                    all_stopped = False
+                    logger.warning(
+                        "worker %s did not stop within timeout",
+                        worker.__class__.__name__,
+                    )
+                else:
+                    logger.info("worker %s stopped", worker.__class__.__name__)
+            except Exception:
+                all_stopped = False
+                logger.exception("Failed waiting worker %s", worker.__class__.__name__)
+        if all_stopped:
+            logger.info("all backend workers exited")

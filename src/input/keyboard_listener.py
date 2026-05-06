@@ -1,8 +1,11 @@
+import logging
 import threading
 import time
 
 from pynput import keyboard
 from PyQt6.QtCore import QObject, pyqtSignal
+
+logger = logging.getLogger(__name__)
 
 # Bộ lưu trữ toàn cục Tracking Physical Keys (Được quản lý tự động bởi Pynput, bỏ qua SendInput)
 PHYSICAL_KEYS = set()
@@ -53,6 +56,7 @@ class KeyboardListener(QObject):
         super().__init__()
         self.listener = None
         self.running = False
+        self._native_callback_thread_seen = None
 
         # Mapping Key -> Action
         self.key_map = {
@@ -109,17 +113,44 @@ class KeyboardListener(QObject):
             self.listener = keyboard.Listener(
                 on_press=self.on_press, on_release=self.on_release
             )
+            self.listener.daemon = True
             self.listener.start()
             self.running = True
 
     def stop_listening(self):
         if self.listener:
-            self.listener.stop()
-            self.listener = None
+            logger.info("Stopping keyboard listener")
+            listener = self.listener
             self.running = False
+            listener.stop()
+            try:
+                listener.join(0.075)
+            except Exception:
+                logger.exception("Keyboard listener join failed")
+            if listener.is_alive():
+                logger.warning("keyboard listener did not stop within timeout")
+            else:
+                logger.info("keyboard listener stopped")
+            self.listener = None
+
+    def _track_callback_thread(self):
+        current = threading.current_thread()
+        if current.__class__.__name__ != "_DummyThread":
+            return
+        descriptor = f"{current.name}:{current.__class__.__name__}"
+        if self._native_callback_thread_seen == descriptor:
+            return
+        self._native_callback_thread_seen = descriptor
+        logger.warning("Keyboard callback running on native thread: %s", descriptor)
+
+    def get_native_callback_source(self):
+        return self._native_callback_thread_seen
 
     def on_press(self, key):
         try:
+            self._track_callback_thread()
+            if not self.running:
+                return
             k_str = self.get_key_name(key)
             if not k_str:
                 return
@@ -151,11 +182,14 @@ class KeyboardListener(QObject):
             if action:
                 self.signal_action.emit(action)
 
-        except Exception as e:
-            print(f"[KeyError] {e}")
+        except Exception:
+            logger.exception("Keyboard on_press failed")
 
     def on_release(self, key):
         try:
+            self._track_callback_thread()
+            if not self.running:
+                return
             k_str = self.get_key_name(key)
             if not k_str:
                 return
@@ -175,8 +209,8 @@ class KeyboardListener(QObject):
             # Emit Release for Raw Keys
             if k_str in self.raw_keys:
                 self.signal_key_event.emit(k_str, False)
-        except Exception as e:
-            print(f"[KEYBOARD] on_release error: {e}")
+        except Exception:
+            logger.exception("Keyboard on_release failed")
 
     def get_key_name(self, key):
         # Convert pynput key to string

@@ -13,10 +13,28 @@
     "style": "minimal",
     "color": "Trắng",
     "color_index": 10,
-    "toggle_key": "none",
+    "toggle_key": "home",
     "ads_mode": "HOLD"
   },
-  "capture_mode": "MSS",
+  "capture_mode": "DXCAM",
+  "auto_start_runtime": false,
+  "performance": {
+    "high_priority": false,
+    "single_core_affinity": false
+  },
+  "detection": {
+    "thresholds": {
+      "default_match": 0.8,
+      "weapon_name": 0.8,
+      "accessory": 0.8,
+      "grip": 0.8,
+      "scope": 0.8,
+      "ui_anchor": 0.65,
+      "ui_gate": 0.4,
+      "stance": 0.6,
+      "early_exit": 0.98
+    }
+  },
   "aim": {
     "runtime": {
       "capture_backend": "DirectX",
@@ -111,7 +129,57 @@
   },
   "fast_loot_key": "caps_lock",
   "fast_loot": true,
+  "fast_loot_config": {
+    "inventory_toggle_scancode": 23,
+    "fastloot_open_delay_ms": 12,
+    "inventory_open_timeout_ms": 220,
+    "inventory_poll_interval_ms": 6,
+    "fastloot_click_delay_ms": 10,
+    "fastloot_close_delay_ms": 10,
+    "profiles": {
+      "1728x1080": {
+        "loot_slots": [
+          [61, 579],
+          [61, 512],
+          [59, 450],
+          [60, 390],
+          [61, 329],
+          [60, 266],
+          [62, 207],
+          [61, 146]
+        ],
+        "drag_destination": [844, 504]
+      },
+      "1920x1080": {
+        "loot_slots": [
+          [68, 579],
+          [68, 512],
+          [66, 450],
+          [67, 390],
+          [68, 329],
+          [67, 266],
+          [69, 207],
+          [68, 146]
+        ],
+        "drag_destination": [938, 504]
+      },
+      "3440x1440": {
+        "loot_slots": [
+          [122, 772],
+          [122, 683],
+          [118, 600],
+          [120, 520],
+          [122, 439],
+          [120, 355],
+          [124, 277],
+          [122, 195]
+        ],
+        "drag_destination": [1681, 672]
+      }
+    }
+  },
   "slide_trick": true,
+  "overlay_enabled": true,
   "overlay_key": "delete",
   "scope_intensity": {
     "normal": 100,

@@ -1,99 +1,128 @@
+from __future__ import annotations
+
 import ctypes
+import logging
 import os
-import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RUNTIME_ROOT = Path(__file__).resolve().parent
+APP_ROOT = (
+    Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else PROJECT_ROOT
+)
+GAME_PATH_TOKENS = (
+    "pubg",
+    "tslgame",
+    "binaries/win64",
+    "steamapps/common/pubg",
+)
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.core import utils as Utils
 
 os.environ["QT_LOGGING_RULES"] = "*.debug=false;qt.qpa.*=false"
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
+from src.core import utils as Utils
+from src.core.logging_config import setup_logging
 
-def print_banner():
-    banner = """
-    ====================================================
-    ||                                                ||
-    ||           DI88-VP  ULTRA PREMIUM               ||
-    ||        High-Performance Gaming Macro           ||
-    ||                                                ||
-    ====================================================
-    """
-    print(banner)
+logger = logging.getLogger(__name__)
 
 
-def _add_defender_exclusion():
+def _normalize_runtime_path(path_value: str | os.PathLike[str]) -> str:
     try:
-        temp_path = os.environ.get("TEMP", r"C:\Users\Admin\AppData\Local\Temp")
-        subprocess.run(
-            [
-                "powershell",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                f'Add-MpPreference -ExclusionPath "{temp_path}" -ErrorAction SilentlyContinue',
-            ],
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            timeout=10,
-        )
+        return Path(path_value).resolve().as_posix().lower()
     except Exception:
-        pass
+        return str(path_value).replace("\\", "/").lower()
 
 
-def _self_elevate_and_whitelist():
-    if not Utils.is_admin():
-        script = os.path.abspath(sys.argv[0])
-        params = " ".join(sys.argv[1:])
-        ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", sys.executable, f'"{script}" {params}', None, 1
-        )
-        sys.exit(0)
-    _add_defender_exclusion()
+def _is_disallowed_game_path(path_value: str | os.PathLike[str]) -> bool:
+    normalized = _normalize_runtime_path(path_value)
+    return any(token in normalized for token in GAME_PATH_TOKENS)
 
 
-def _optimize_cpu_and_priority():
+def _is_within_path(path_value: Path, root_value: Path) -> bool:
     try:
-        import psutil
-
-        proc = psutil.Process(os.getpid())
-        proc.nice(psutil.HIGH_PRIORITY_CLASS)
-
-        count = psutil.cpu_count()
-        if count and count > 1:
-            proc.cpu_affinity([count - 1])
-            print(
-                f" > [SYSTEM] CPU Isolated: Pinned to Core {count - 1} (Avoid FPS Drops)"
-            )
-    except Exception as e:
-        print(f" > [WARN] CPU Optimization failed: {e}")
+        path_value.resolve().relative_to(root_value.resolve())
+        return True
+    except ValueError:
+        return False
 
 
-if __name__ == "__main__":
+def _log_runtime_paths() -> tuple[Path, Path, Path]:
+    cwd = Path(os.getcwd()).resolve()
+    executable_path = Path(sys.executable).resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    logger.info("Runtime cwd: %s", cwd)
+    logger.info("Runtime executable: %s", executable_path)
+    logger.info("Project root: %s", PROJECT_ROOT)
+    logger.info("App root: %s", APP_ROOT)
+    logger.info("Runtime root: %s", RUNTIME_ROOT)
+    logger.info("Temp root: %s", temp_root)
+    return cwd, executable_path, temp_root
+
+
+def _enforce_safe_runtime_location(app) -> bool:
+    from PyQt6.QtWidgets import QMessageBox
+
+    cwd, executable_path, temp_root = _log_runtime_paths()
+    blocked_paths = []
+    if _is_disallowed_game_path(cwd):
+        blocked_paths.append(f"cwd={cwd}")
+    if _is_disallowed_game_path(executable_path):
+        blocked_paths.append(f"sys.executable={executable_path}")
+    if _is_disallowed_game_path(APP_ROOT):
+        blocked_paths.append(f"app_root={APP_ROOT}")
+    if _is_disallowed_game_path(RUNTIME_ROOT):
+        blocked_paths.append(f"runtime_root={RUNTIME_ROOT}")
+    if _is_disallowed_game_path(temp_root):
+        blocked_paths.append(f"temp_root={temp_root}")
+
+    runtime_allowed = _is_within_path(RUNTIME_ROOT, APP_ROOT) or _is_within_path(
+        RUNTIME_ROOT, temp_root
+    )
+    if not runtime_allowed:
+        blocked_paths.append(f"runtime_outside_allowed_roots={RUNTIME_ROOT}")
+
+    if not blocked_paths:
+        return True
+
+    warning_message = (
+        "Ứng dụng không được phép chạy từ thư mục game PUBG.\n\n"
+        + "\n".join(blocked_paths)
+        + "\n\nHãy di chuyển app ra ngoài thư mục game rồi chạy lại."
+    )
+    logger.warning("Safety guard blocked startup: %s", " | ".join(blocked_paths))
+    QMessageBox.critical(None, "Safety Guard", warning_message)
+    app.quit()
+    return False
+
+
+def main() -> int:
     Utils.set_high_dpi()
-    _self_elevate_and_whitelist()
-    _optimize_cpu_and_priority()
+    setup_logging()
 
+    import win32api
     from PyQt6.QtGui import QFont, QIcon
-    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtWidgets import QApplication, QDialog
 
     from src.core.backend import BackendThread
     from src.core.controllers.gui_bridge import GuiInputBridge
     from src.core.path_utils import get_resource_path
+    from src.core.settings import SettingsManager
     from src.core.timing import HighPrecisionTimer
-    from src.gui.macro_window import MacroWindow
+    from src.gui.macro_window import MacroWindow, ResolutionNoticeDialog
     from src.input.keyboard_listener import KeyboardListener
     from src.input.mouse_listener import MouseListener
 
-    myappid = "di88.phutho.macro.v1"
     try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "di88.phutho.macro.v1"
+        )
     except Exception:
-        pass
+        logger.exception("Failed to set AppUserModelID")
 
     timer_enforcer = HighPrecisionTimer()
     timer_enforcer.start()
@@ -101,48 +130,103 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setApplicationName("Di88-VP")
     app.setApplicationDisplayName("Di88-VP")
+    app.setQuitOnLastWindowClosed(True)
     app.setFont(QFont("Segoe UI", 9))
+    if not _enforce_safe_runtime_location(app):
+        timer_enforcer.stop()
+        return 0
+
+    screen_width = win32api.GetSystemMetrics(0)
+    screen_height = win32api.GetSystemMetrics(1)
+    resolution_text = f"{screen_width}x{screen_height}"
+    resolution_dialog = ResolutionNoticeDialog(resolution_text)
+    if resolution_dialog.exec() != QDialog.DialogCode.Accepted:
+        timer_enforcer.stop()
+        sys.exit(0)
 
     window = MacroWindow()
     window.setWindowTitle("Di88-VP")
     window.setWindowIcon(QIcon(get_resource_path("di88vp.ico")))
+    settings_manager = SettingsManager()
+    runtime_context: dict[str, object] = {}
 
-    backend = BackendThread()
-    backend.signal_update.connect(window.update_ui_state)
-    backend.signal_message.connect(window.show_message)
-    backend.signal_ads_update.connect(window.update_ads_display)
+    def start_runtime_if_needed() -> None:
+        if runtime_context.get("backend") is not None:
+            return
 
-    initial_ads = getattr(backend.pubg_config, "ads_mode", None)
-    if initial_ads:
-        window.update_ads_display(initial_ads.upper())
+        logger.info("Runtime lazy start requested")
+        backend = BackendThread()
+        backend.signal_update.connect(window.update_ui_state)
+        backend.signal_message.connect(window.show_message)
+        backend.signal_ads_update.connect(window.update_ads_display)
 
-    window.set_backend(backend)
-    window.signal_settings_changed.connect(backend.reload_config)
+        initial_ads = getattr(backend.pubg_config, "ads_mode", None)
+        if initial_ads:
+            window.update_ads_display(initial_ads.upper())
 
-    input_bridge = GuiInputBridge(window, backend)
+        window.set_backend(backend)
+        window.signal_settings_changed.connect(backend.reload_config)
 
-    keyboard_listener = KeyboardListener()
-    input_bridge.keyboard_listener = keyboard_listener
-    keyboard_listener.signal_key_event.connect(input_bridge.handle_raw_key)
-    keyboard_listener.signal_action.connect(input_bridge.handle_input_action)
-    keyboard_listener.start_listening()
+        input_bridge = GuiInputBridge(window, backend)
 
-    mouse_listener = MouseListener()
-    mouse_listener.signal_click.connect(input_bridge.handle_mouse_click)
-    mouse_listener.start_listening()
+        keyboard_listener = KeyboardListener()
+        input_bridge.keyboard_listener = keyboard_listener
+        keyboard_listener.signal_key_event.connect(input_bridge.handle_raw_key)
+        keyboard_listener.signal_action.connect(input_bridge.handle_input_action)
+        keyboard_listener.start_listening()
+
+        mouse_listener = MouseListener()
+        mouse_listener.signal_click.connect(input_bridge.handle_mouse_click)
+        mouse_listener.start_listening()
+
+        window.set_runtime_handles(
+            keyboard_listener=keyboard_listener,
+            mouse_listener=mouse_listener,
+            timers=[timer_enforcer],
+        )
+
+        backend.start()
+        runtime_context.update(
+            {
+                "backend": backend,
+                "input_bridge": input_bridge,
+                "keyboard_listener": keyboard_listener,
+                "mouse_listener": mouse_listener,
+            }
+        )
+        logger.info("Runtime started")
+
+    window.set_runtime_starter(start_runtime_if_needed)
 
     def exception_hook(exctype, value, tb):
         import traceback
 
-        err_msg = "".join(traceback.format_exception(exctype, value, tb))
-        print(f"\n> [CRASH REPORT]\n{err_msg}")
+        logger.critical(
+            "Unhandled exception:\n%s",
+            "".join(traceback.format_exception(exctype, value, tb)),
+        )
         timer_enforcer.stop()
         sys.exit(1)
 
-    sys.excepthook = exception_hook
+    def on_quit() -> None:
+        try:
+            logger.info(
+                "aboutToQuit triggered | shutdown_started=%s",
+                bool(getattr(window, "_is_shutting_down", False)),
+            )
+        except Exception:
+            logger.exception("Failed shutdown during app quit")
+        timer_enforcer.stop()
 
-    backend.start()
+    sys.excepthook = exception_hook
+    app.aboutToQuit.connect(on_quit)
+
+    start_runtime_if_needed()
     window.show()
 
-    print(" > [SYSTEM] Macro DI88-VP is Ready!")
-    sys.exit(app.exec())
+    logger.info("Macro DI88-VP is ready")
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

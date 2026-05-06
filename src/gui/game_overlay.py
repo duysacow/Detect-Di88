@@ -45,7 +45,7 @@ class GameOverlay(QWidget):
         self.frame.setGeometry(0, 0, self.w, self.h)
         self.frame.setStyleSheet("""
             QFrame {
-                background-color: rgba(10, 10, 10, 180);
+                background-color: rgba(10, 10, 10, 160);
                 border: 1px solid #444444;
                 border-radius: 6px;
             }
@@ -88,7 +88,7 @@ class GameOverlay(QWidget):
         )
         # VIỀN GIỮ NGUYÊN (Theo ý sếp)
         self.frame.setStyleSheet(
-            "QFrame { background-color: rgba(10, 10, 10, 180); border: 1px solid #444444; border-radius: 6px; }"
+            "QFrame { background-color: rgba(10, 10, 10, 160); border: 1px solid #444444; border-radius: 6px; }"
         )
         self.color_idx += 1
 
@@ -102,7 +102,7 @@ class GameOverlay(QWidget):
             f"color: {color}; font-weight: 900; font-family: 'Segoe UI'; font-size: 10px; border: none; background: transparent;"
         )
         self.frame.setStyleSheet(
-            "QFrame { background-color: rgba(10, 10, 10, 180); border: 1px solid #444444; border-radius: 6px; }"
+            "QFrame { background-color: rgba(10, 10, 10, 160); border: 1px solid #444444; border-radius: 6px; }"
         )
         self.detect_idx += 1
 
@@ -205,6 +205,6 @@ class GameOverlay(QWidget):
                         f"color: {color}; font-weight: 900; font-family: 'Segoe UI'; font-size: 10px; border: none; background: transparent;"
                     )
                     self.frame.setStyleSheet(
-                        "QFrame { background-color: rgba(10, 10, 10, 180); border: 1px solid #444444; border-radius: 6px; }"
+                        "QFrame { background-color: rgba(10, 10, 10, 160); border: 1px solid #444444; border-radius: 6px; }"
                     )
                     self.last_color = color

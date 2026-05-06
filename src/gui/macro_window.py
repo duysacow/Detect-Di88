@@ -2,8 +2,10 @@
 
 import ctypes
 import encodings.cp1252
+import logging
 import os
 import sys
+import threading
 from pathlib import Path
 
 import win32api
@@ -51,6 +53,9 @@ import src.core.utils as Utils
 from PyQt6.QtWidgets import (QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QFrame)
 from PyQt6.QtCore import Qt
 
+APP_STYLE_QSS = ""
+logger = logging.getLogger(__name__)
+
 def create_panel(title, color_hex, obj_name):
     """Helper tạo panel cài đặt."""
     panel = QFrame()
@@ -94,10 +99,21 @@ def create_data_row(grid, row, label):
     """Helper tạo một dòng dữ liệu."""
     l = QLabel(f"{label}")
     l.setProperty("role", "row-label")
+    l.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    l.setFixedHeight(20)
+    l.setStyleSheet(
+        "color: #87909a; font-size: 11px; font-weight: 600; "
+        "background: transparent; border: none; padding: 1px 0;"
+    )
     
     val = QLabel("NONE")
     val.setProperty("role", "value-label")
-    val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    val.setFixedHeight(20)
+    val.setStyleSheet(
+        "color: #eef2f6; font-size: 12px; font-weight: 600; "
+        "background: transparent; border: none; padding: 1px 0;"
+    )
     
     grid.addWidget(l, row, 0)
     grid.addWidget(val, row, 1)
@@ -136,13 +152,16 @@ class TrayManager:
         
         # Exit Action
         action_exit = QAction("Exit", self.main_window)
-        action_exit.triggered.connect(QApplication.instance().quit)
+        action_exit.triggered.connect(self.main_window.request_app_exit)
         menu.addAction(action_exit)
         
         self.tray_icon.setContextMenu(menu)
         
     def on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
             self.main_window.restore_window()
             
     def show(self):
@@ -540,7 +559,7 @@ class HomePanelBuilder:
                 rows=[
                     ("Tư thế", "home_macro_stance_value", "ĐỨNG", "#f2f2f2"),
                     ("ADS", "home_macro_ads_value", "HOLD", "#66ffc2"),
-                    ("Chế Độ Chụp", "home_macro_capture_value", "DXGI", "#89d4ff"),
+                    ("Chế Độ Chụp", "home_macro_capture_value", "DXCAM", "#89d4ff"),
                 ],
                 toggle_attr="home_macro_toggle_btn",
                 toggle_handler=getattr(owner, "toggle_home_macro", None),
@@ -2830,15 +2849,16 @@ class MacroWindow(QMainWindow):
         w = win32api.GetSystemMetrics(0)
         h = win32api.GetSystemMetrics(1)
         self.detected_resolution = f"{w}x{h}"
-        self._resolution_notice_dialog = ResolutionNoticeDialog(self.detected_resolution, self)
-        self._resolution_notice_dialog.open()
         
         # 2. Logic Components (Connected via set_backend)
         self.backend = None
+        self._runtime_starter = None
+        self._runtime_started = False
         self.keyboard_listener = None
         self.mouse_listener = None
         self._runtime_timers = []
         self._shutdown_in_progress = False
+        self._is_shutting_down = False
         self._last_macro_ui_signature = None
         self._last_macro_toggle_state = None
         self._last_stance_style_signature = None
@@ -2846,6 +2866,7 @@ class MacroWindow(QMainWindow):
         self._last_banner_signature = None
         self._last_home_snapshot_signature = None
         self._last_ads_status_signature = None
+        self._overlay_enabled = False
         self._layout_sync_timer = QTimer(self)
         self._layout_sync_timer.setSingleShot(True)
         self._layout_sync_timer.timeout.connect(self.sync_window_height_to_content)
@@ -2853,9 +2874,8 @@ class MacroWindow(QMainWindow):
         # 3. Threads (PLACEHOLDER)
         
         # 4. Crosshair Overlay & Game HUD
-        self.crosshair = CrosshairOverlay(self)
-        
-        self.game_overlay = GameOverlay(None)  # DETACH TO AVOID TASKBAR ISSUES
+        self.crosshair = None
+        self.game_overlay = None
 
         # Temporary unsaved keybind values must exist before setup_ui_v2(),
         # because load_crosshair_settings() can trigger save_crosshair_settings()
@@ -2881,9 +2901,9 @@ class MacroWindow(QMainWindow):
         self.setup_ui_v2()
         self.sanitize_runtime_vietnamese_text()
         
-        # 6. Tray Manager (Step 6)
+        # 6. Tray Manager
+        # Tray icon chỉ hiện khi người dùng thật sự đưa app xuống tray.
         self.tray_manager = TrayManager(self)
-        self.tray_manager.show()
         
         self.dragPos = None
         self._crosshair_hidden_for_window = False
@@ -3636,7 +3656,7 @@ class MacroWindow(QMainWindow):
             )
 
     def toggle_home_macro(self):
-        if getattr(self, "backend", None) is None:
+        if not self.ensure_runtime_started():
             return
         current_on = hasattr(self, "btn_macro") and self.btn_macro and "ON" in self.btn_macro.text().upper()
         next_on = not current_on
@@ -3647,7 +3667,7 @@ class MacroWindow(QMainWindow):
             pass
 
     def toggle_home_aim(self):
-        if getattr(self, "backend", None) is None:
+        if not self.ensure_runtime_started():
             return
         try:
             if hasattr(self.backend, "toggle_aim_assist_direct"):
@@ -3732,7 +3752,7 @@ class MacroWindow(QMainWindow):
         ads_text = "HOLD"
         if hasattr(self, "lbl_ads_status") and self.lbl_ads_status:
             ads_text = self.lbl_ads_status.text().split(":")[-1].strip() or ads_text
-        capture_text = getattr(self, "current_capture_mode", "DXGI")
+        capture_text = getattr(self, "current_capture_mode", "DXCAM")
         model_text = "N/A"
         if hasattr(self, "combo_aim_model") and self.combo_aim_model and self.combo_aim_model.count():
             model_text = self.combo_aim_model.currentText().strip() or model_text
@@ -4440,13 +4460,14 @@ class MacroWindow(QMainWindow):
                     qss = qss.replace("__COMBO_ARROW__", f"\"{combo_arrow}\"")
                 else:
                     qss = qss.replace("image: url(__COMBO_ARROW__);", "")
-                self.setStyleSheet(qss)
+                if qss.strip():
+                    self.setStyleSheet(qss)
                 return
-            if APP_STYLE_QSS:
+            if APP_STYLE_QSS.strip():
                 self.setStyleSheet(APP_STYLE_QSS)
         except Exception as e:
-            print(f"[WARN] Could not load style.qss: {e}")
-            if APP_STYLE_QSS:
+            logger.warning("Could not load style.qss: %s", e)
+            if APP_STYLE_QSS.strip():
                 self.setStyleSheet(APP_STYLE_QSS)
 
     def build_crosshair_preview_icon(self, style_name: str) -> QIcon:
@@ -4999,30 +5020,38 @@ class MacroWindow(QMainWindow):
 
         self.panel_detection = MacroTitledBox("\u0054\u0068\u00f4\u006e\u0067\u0020\u0054\u0069\u006e\u0020\u0053\u00fa\u006e\u0067", "DetectionPanel")
         detection_layout = self.panel_detection.content_layout()
-        detection_layout.setSpacing(6)
+        detection_layout.setContentsMargins(10, 16, 10, 8)
+        detection_layout.setSpacing(8)
         self.header_detection = None
 
         detection_row = QHBoxLayout()
         detection_row.setContentsMargins(0, 0, 0, 0)
-        detection_row.setSpacing(8)
+        detection_row.setSpacing(10)
 
         self.panel_g1 = QFrame()
         self.panel_g1.setObjectName("P1")
-        self.panel_g1.setStyleSheet("QFrame#P1 { background: transparent; border: none; }")
+        self.panel_g1.setStyleSheet(
+            "QFrame#P1 { "
+            "background: transparent; "
+            "border: 1px solid rgba(255, 255, 255, 0.04); "
+            "border-radius: 8px; }"
+        )
         l_g1 = QVBoxLayout(self.panel_g1)
-        l_g1.setContentsMargins(0, 0, 0, 0)
+        l_g1.setContentsMargins(8, 6, 8, 7)
         l_g1.setSpacing(4)
         g1_title_row = QHBoxLayout()
         g1_title_row.setContentsMargins(0, 0, 0, 0)
-        g1_title_row.setSpacing(6)
-        g1_title_row.addStretch(1)
+        g1_title_row.setSpacing(4)
         self.lbl_g1_title = QLabel("S\u00fang 1")
         self.lbl_g1_title.setObjectName("Gun1Title")
-        self.g1_title_line = QFrame()
-        self.g1_title_line.setObjectName("Gun1TitleLine")
-        self.g1_title_line.setFrameShape(QFrame.Shape.HLine)
-        self.g1_title_line.setFixedSize(72, 2)
-        self.g1_title_line.hide()
+        self.lbl_g1_title.setStyleSheet(
+            "color: #f08c8c; font-size: 12px; font-weight: 700; "
+            "background: transparent; border: none; letter-spacing: 0.3px;"
+        )
+        g1_title_dot = QFrame()
+        g1_title_dot.setFixedSize(5, 5)
+        g1_title_dot.setStyleSheet("background: rgba(240, 140, 140, 0.8); border: none; border-radius: 2px;")
+        g1_title_row.addWidget(g1_title_dot, 0, Qt.AlignmentFlag.AlignVCenter)
         g1_title_row.addWidget(self.lbl_g1_title)
         g1_title_row.addStretch(1)
         l_g1.addLayout(g1_title_row)
@@ -5030,40 +5059,47 @@ class MacroWindow(QMainWindow):
         g1_content_row.setContentsMargins(0, 0, 0, 0)
         g1_content_row.setSpacing(8)
         self.g1_accent_line = QFrame()
-        self.g1_accent_line.setFixedWidth(2)
-        self.g1_accent_line.setStyleSheet("background-color: #9a3a3a; border: none; border-radius: 1px;")
+        self.g1_accent_line.setFixedWidth(1)
+        self.g1_accent_line.setStyleSheet("background-color: rgba(240, 140, 140, 0.38); border: none; border-radius: 1px;")
         g1_content_row.addWidget(self.g1_accent_line)
         self.grid_g1 = QGridLayout()
-        self.grid_g1.setVerticalSpacing(6)
-        self.grid_g1.setHorizontalSpacing(0)
-        self.grid_g1.setColumnMinimumWidth(0, 48)
-        self.grid_g1.setColumnMinimumWidth(1, 20)
-        self.grid_g1.setColumnStretch(2, 1)
+        self.grid_g1.setContentsMargins(0, 1, 0, 0)
+        self.grid_g1.setVerticalSpacing(4)
+        self.grid_g1.setHorizontalSpacing(14)
+        self.grid_g1.setColumnMinimumWidth(0, 54)
+        self.grid_g1.setColumnStretch(1, 1)
         self.lbl_g1_name = create_data_row(self.grid_g1, 0, "Name")
         self.lbl_g1_scope = create_data_row(self.grid_g1, 1, "Scope")
         self.lbl_g1_grip = create_data_row(self.grid_g1, 2, "Grip")
-        self.lbl_g1_muzzle = create_data_row(self.grid_g1, 3, "Muzz")
+        self.lbl_g1_muzzle = create_data_row(self.grid_g1, 3, "Muzzle")
         g1_content_row.addLayout(self.grid_g1, 1)
         l_g1.addLayout(g1_content_row)
         detection_row.addWidget(self.panel_g1, stretch=1)
 
         self.panel_g2 = QFrame()
         self.panel_g2.setObjectName("P2")
-        self.panel_g2.setStyleSheet("QFrame#P2 { background: transparent; border: none; }")
+        self.panel_g2.setStyleSheet(
+            "QFrame#P2 { "
+            "background: transparent; "
+            "border: 1px solid rgba(255, 255, 255, 0.04); "
+            "border-radius: 8px; }"
+        )
         l_g2 = QVBoxLayout(self.panel_g2)
-        l_g2.setContentsMargins(0, 0, 0, 0)
+        l_g2.setContentsMargins(8, 6, 8, 7)
         l_g2.setSpacing(4)
         g2_title_row = QHBoxLayout()
         g2_title_row.setContentsMargins(0, 0, 0, 0)
-        g2_title_row.setSpacing(6)
-        g2_title_row.addStretch(1)
+        g2_title_row.setSpacing(4)
         self.lbl_g2_title = QLabel("S\u00fang 2")
         self.lbl_g2_title.setObjectName("Gun2Title")
-        self.g2_title_line = QFrame()
-        self.g2_title_line.setObjectName("Gun2TitleLine")
-        self.g2_title_line.setFrameShape(QFrame.Shape.HLine)
-        self.g2_title_line.setFixedSize(72, 2)
-        self.g2_title_line.hide()
+        self.lbl_g2_title.setStyleSheet(
+            "color: #86d99a; font-size: 12px; font-weight: 700; "
+            "background: transparent; border: none; letter-spacing: 0.3px;"
+        )
+        g2_title_dot = QFrame()
+        g2_title_dot.setFixedSize(5, 5)
+        g2_title_dot.setStyleSheet("background: rgba(134, 217, 154, 0.8); border: none; border-radius: 2px;")
+        g2_title_row.addWidget(g2_title_dot, 0, Qt.AlignmentFlag.AlignVCenter)
         g2_title_row.addWidget(self.lbl_g2_title)
         g2_title_row.addStretch(1)
         l_g2.addLayout(g2_title_row)
@@ -5071,19 +5107,19 @@ class MacroWindow(QMainWindow):
         g2_content_row.setContentsMargins(0, 0, 0, 0)
         g2_content_row.setSpacing(8)
         self.g2_accent_line = QFrame()
-        self.g2_accent_line.setFixedWidth(2)
-        self.g2_accent_line.setStyleSheet("background-color: #2f8f4a; border: none; border-radius: 1px;")
+        self.g2_accent_line.setFixedWidth(1)
+        self.g2_accent_line.setStyleSheet("background-color: rgba(134, 217, 154, 0.38); border: none; border-radius: 1px;")
         g2_content_row.addWidget(self.g2_accent_line)
         self.grid_g2 = QGridLayout()
-        self.grid_g2.setVerticalSpacing(6)
-        self.grid_g2.setHorizontalSpacing(0)
-        self.grid_g2.setColumnMinimumWidth(0, 48)
-        self.grid_g2.setColumnMinimumWidth(1, 20)
-        self.grid_g2.setColumnStretch(2, 1)
+        self.grid_g2.setContentsMargins(0, 1, 0, 0)
+        self.grid_g2.setVerticalSpacing(4)
+        self.grid_g2.setHorizontalSpacing(14)
+        self.grid_g2.setColumnMinimumWidth(0, 54)
+        self.grid_g2.setColumnStretch(1, 1)
         self.lbl_g2_name = create_data_row(self.grid_g2, 0, "Name")
         self.lbl_g2_scope = create_data_row(self.grid_g2, 1, "Scope")
         self.lbl_g2_grip = create_data_row(self.grid_g2, 2, "Grip")
-        self.lbl_g2_muzzle = create_data_row(self.grid_g2, 3, "Muzz")
+        self.lbl_g2_muzzle = create_data_row(self.grid_g2, 3, "Muzzle")
         g2_content_row.addLayout(self.grid_g2, 1)
         l_g2.addLayout(g2_content_row)
         detection_row.addWidget(self.panel_g2, stretch=1)
@@ -5236,9 +5272,9 @@ class MacroWindow(QMainWindow):
         self.btn_overlay_key.setFixedHeight(24)
         self.style_setting_button(self.btn_overlay_key)
         self.btn_overlay_key.clicked.connect(lambda: self.start_keybind_listening(self.btn_overlay_key, "overlay_key"))
-        self.btn_overlay_toggle = QPushButton("ON")
+        self.btn_overlay_toggle = QPushButton("OFF")
         self.btn_overlay_toggle.setObjectName("OverlayToggleBtn")
-        self.btn_overlay_toggle.setProperty("state", "ON")
+        self.btn_overlay_toggle.setProperty("state", "OFF")
         self.btn_overlay_toggle.setCheckable(False)
         self.btn_overlay_toggle.clicked.connect(self.toggle_overlay_visibility)
         self.btn_overlay_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5257,7 +5293,7 @@ class MacroWindow(QMainWindow):
         row_capture = QHBoxLayout()
         row_capture.setContentsMargins(0, 0, 0, 0)
         row_capture.setSpacing(3)
-        self.lbl_capture_mode_auto = QLabel("DXGI")
+        self.lbl_capture_mode_auto = QLabel("DXCAM")
         self.lbl_capture_mode_auto.hide()
         self.btn_capture_native = QPushButton("DXGI")
         self.btn_capture_native.setFixedHeight(22)
@@ -5277,6 +5313,7 @@ class MacroWindow(QMainWindow):
         self.btn_capture_mss.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.btn_capture_mss.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_capture_mss.clicked.connect(lambda: self.set_capture_mode("MSS"))
+        self.btn_capture_native.hide()
         row_capture.addWidget(self.btn_capture_native, 1)
         row_capture.addWidget(self.btn_capture_dxcam, 1)
         row_capture.addWidget(self.btn_capture_mss, 1)
@@ -5844,9 +5881,9 @@ class MacroWindow(QMainWindow):
         self.btn_overlay_key.setFixedHeight(25)
         self.btn_overlay_key.clicked.connect(lambda: self.start_keybind_listening(self.btn_overlay_key, "overlay_key"))
         
-        self.btn_overlay_toggle = QPushButton("ON")
+        self.btn_overlay_toggle = QPushButton("OFF")
         self.btn_overlay_toggle.setObjectName("OverlayToggleBtn")
-        self.btn_overlay_toggle.setProperty("state", "ON")
+        self.btn_overlay_toggle.setProperty("state", "OFF")
         self.btn_overlay_toggle.setCheckable(False)
         self.btn_overlay_toggle.clicked.connect(self.toggle_overlay_visibility)
         self.btn_overlay_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -6089,12 +6126,19 @@ class MacroWindow(QMainWindow):
 
     # Đã làm sạch chú thích lỗi mã hóa.
     def toggle_overlay_visibility(self):
-        if self.btn_overlay_toggle.text() == "ON":
-            self.game_overlay.hide()
+        if self._overlay_enabled:
+            self._overlay_enabled = False
+            self._dispose_overlay("game_overlay")
             self.btn_overlay_toggle.setText("OFF")
             self.btn_overlay_toggle.setProperty("state", "OFF")
         else:
-            self.game_overlay.show()
+            if not self.ensure_runtime_started():
+                return
+            self._overlay_enabled = True
+            overlay = self._ensure_game_overlay()
+            overlay.show()
+            logger.info("game overlay shown")
+            self._update_game_overlay_from_last_data()
             self.btn_overlay_toggle.setText("ON")
             self.btn_overlay_toggle.setProperty("state", "ON")
         self.repolish(self.btn_overlay_toggle)
@@ -6137,14 +6181,19 @@ class MacroWindow(QMainWindow):
 
     def toggle_crosshair(self, checked):
         checked = bool(checked)
-        self.crosshair.set_active(checked)
         if checked:
-            self.crosshair.show()
-            self.crosshair.raise_()
+            if not self.ensure_runtime_started():
+                return
+            crosshair = self._ensure_crosshair_overlay()
+            crosshair.set_active(True)
+            crosshair.show()
+            crosshair.raise_()
             self.btn_cross_toggle.setText("ON")
             self.btn_cross_toggle.setProperty("checked", "true")
         else:
-            self.crosshair.hide()
+            if self.crosshair is not None:
+                self.crosshair.set_active(False)
+            self._dispose_overlay("crosshair")
             self.btn_cross_toggle.setText("OFF")
             self.btn_cross_toggle.setProperty("checked", "false")
         self.repolish(self.btn_cross_toggle)
@@ -6161,12 +6210,14 @@ class MacroWindow(QMainWindow):
     def change_crosshair_style(self, index):
         style_map = dict(self.crosshair_style_options)
         style = style_map.get(self.combo_style.currentText(), "x")
-        self.crosshair.set_style(style)
+        if self.crosshair is not None:
+            self.crosshair.set_style(style)
         self.save_crosshair_settings() # Auto-save
 
     def change_crosshair_color(self, index):
         color = self.combo_color.currentText()
-        self.crosshair.set_color(color)
+        if self.crosshair is not None:
+            self.crosshair.set_color(color)
         self.save_crosshair_settings() # Auto-save
 
 
@@ -6335,8 +6386,11 @@ class MacroWindow(QMainWindow):
             self.update_ads_status_style(ads_mode.upper())
 
             # Load Capture Mode
-            cap_mode = settings.get("capture_mode", "DXGI")
-            self.set_capture_mode_ui(cap_mode.upper())
+            cap_mode = settings.get("capture_mode", "DXCAM")
+            normalized_cap_mode = self.set_capture_mode_ui(cap_mode.upper())
+            if str(cap_mode).upper() != normalized_cap_mode:
+                settings["capture_mode"] = normalized_cap_mode
+                self.settings_manager.save(settings)
 
             # Load FastLoot
             fast_loot = settings.get("fast_loot", True)
@@ -6358,6 +6412,7 @@ class MacroWindow(QMainWindow):
 
             ov_key = settings.get("overlay_key", "delete")
             self.btn_overlay_key.setText(ov_key.upper())
+            self._apply_overlay_enabled_ui(bool(settings.get("overlay_enabled", True)))
 
             scope_intensity = settings.get("scope_intensity", {})
             for scope_key, _ in getattr(self, "scope_order", []):
@@ -6481,36 +6536,36 @@ class MacroWindow(QMainWindow):
     def set_capture_mode(self, mode):
         self.set_capture_mode_ui(mode)
         try:
-            self.settings_manager.set("capture_mode", getattr(self, "current_capture_mode", "DXGI"))
+            self.settings_manager.set("capture_mode", getattr(self, "current_capture_mode", "DXCAM"))
             self.settings_manager.save()
         except Exception:
             pass
         try:
             if getattr(self, "backend", None) is not None and hasattr(self.backend, "apply_capture_mode"):
-                self.backend.apply_capture_mode(getattr(self, "current_capture_mode", "DXGI"))
+                self.backend.apply_capture_mode(getattr(self, "current_capture_mode", "DXCAM"))
         except Exception:
             pass
 
     def set_capture_mode_ui(self, mode):
-        raw_mode = str(mode or "DXGI").strip()
+        raw_mode = str(mode or "DXCAM").strip()
         mode_upper = raw_mode.upper()
         mode_map = {
             "DXCAM": "DXCAM",
             "DIRECTX": "DXCAM",
-            "DXGI": "DXGI",
+            "DXGI": "DXCAM",
             "MSS": "MSS",
-            "NATIVE": "DXGI",
+            "NATIVE": "DXCAM",
             "GDI": "MSS",
             "GDI+": "MSS",
             "PIL": "MSS",
-            "AUTO": "DXGI",
+            "AUTO": "DXCAM",
         }
-        mode = mode_map.get(mode_upper, "DXGI")
+        mode = mode_map.get(mode_upper, "DXCAM")
         self.current_capture_mode = mode
         if hasattr(self, "lbl_capture_mode_auto") and self.lbl_capture_mode_auto:
             self.lbl_capture_mode_auto.setText(mode)
         if hasattr(self, "btn_capture_native") and self.btn_capture_native:
-            self.style_capture_button(self.btn_capture_native, mode == "DXGI")
+            self.btn_capture_native.hide()
         if hasattr(self, "btn_capture_dxcam") and self.btn_capture_dxcam:
             self.style_capture_button(self.btn_capture_dxcam, mode == "DXCAM")
         if hasattr(self, "btn_capture_mss") and self.btn_capture_mss:
@@ -6530,6 +6585,7 @@ class MacroWindow(QMainWindow):
                 backend_text = self.lbl_aim_backend_info.text().replace("Backend:", "").strip() or backend_text
             self.lbl_aim_runtime_meta.setText(self._format_aim_backend_meta_text(backend_text, runtime_source))
         self.update_home_snapshot()
+        return mode
 
     def set_aim_capture_mode(self, mode):
         self.set_aim_capture_mode_ui(mode)
@@ -6572,7 +6628,8 @@ class MacroWindow(QMainWindow):
 
         self.btn_adsmode.setText(new_mode)
         self.update_ads_status_style(new_mode)
-        self.crosshair.set_ads_mode(new_mode)
+        if self.crosshair is not None:
+            self.crosshair.set_ads_mode(new_mode)
         self.save_crosshair_settings()
 
     def load_crosshair_settings(self):
@@ -6580,27 +6637,31 @@ class MacroWindow(QMainWindow):
             data = self.settings_manager.get("crosshair", {})
             is_on = data.get("active", False)
             self.btn_cross_toggle.setChecked(is_on)
-            self.toggle_crosshair(is_on)
-            if is_on:
-                self.crosshair.show()
-                self.crosshair.raise_()
+            self.btn_cross_toggle.setText("ON" if is_on else "OFF")
+            self.btn_cross_toggle.setProperty("checked", "true" if is_on else "false")
+            self.repolish(self.btn_cross_toggle)
+            if hasattr(self, "btn_cross_on") and self.btn_cross_on:
+                self.style_capture_button(self.btn_cross_on, is_on)
+            if hasattr(self, "btn_cross_off") and self.btn_cross_off:
+                self.style_capture_button(self.btn_cross_off, not is_on)
+            if hasattr(self, "btn_crosshair_switch") and self.btn_crosshair_switch:
+                self.btn_crosshair_switch.blockSignals(True)
+                self.btn_crosshair_switch.setChecked(is_on)
+                self.btn_crosshair_switch.blockSignals(False)
             style = self.normalize_crosshair_style_value(data.get("style", "x"))
             display_names = [display for display, internal in self.crosshair_style_options if internal == style]
             display_name = display_names[0] if display_names else "X"
             idx = self.combo_style.findText(display_name)
             self.combo_style.setCurrentIndex(idx if idx >= 0 else 0)
-            self.crosshair.set_style(style)
             saved_color_idx = data.get("color_index", None)
             if saved_color_idx is None:
                 saved_color_name = data.get("color", "Đỏ")
                 idx = self.combo_color.findText(saved_color_name)
                 saved_color_idx = idx if idx >= 0 else 0
             self.combo_color.setCurrentIndex(saved_color_idx)
-            self.change_crosshair_color(saved_color_idx)
             ads_mode = data.get("ads_mode", "HOLD")
             if hasattr(self, "btn_adsmode") and self.btn_adsmode: self.btn_adsmode.setText(ads_mode)
             self.update_ads_status_style(ads_mode)
-            self.crosshair.set_ads_mode(ads_mode)
             toggle_key = data.get("toggle_key", "none")
             if hasattr(self, 'btn_cross_bind') and self.btn_cross_bind: self.btn_cross_bind.setText(toggle_key.upper())
         except Exception as e: print(f"[ERROR] Load Crosshair failed: {e}")
@@ -6631,170 +6692,32 @@ class MacroWindow(QMainWindow):
             return
         
         try:
-            # 1. Reset settings.json về mặc định
-            defaults = self.settings_manager.reset_to_defaults()
-            self.settings_manager._cache = None  # Force reload
-            
-            # 2. Reset Keybinds UI
-            kb = defaults.get('keybinds', {})
-            if hasattr(self, 'btn_guitoggle') and self.btn_guitoggle:
-                self.btn_guitoggle.setText(kb.get('gui_toggle', 'f1').upper())
-            
-            # 3. Reset ADS Mode button
-            ads_mode = defaults.get('ads_mode', 'HOLD')
-            if hasattr(self, 'btn_adsmode') and self.btn_adsmode:
-                self.btn_adsmode.setText(ads_mode)
-                self.update_ads_status_style(ads_mode)
-
-            # 3.5 Reset Capture Mode button
-            cap_mode = defaults.get('capture_mode', 'DXGI')
-            self.set_capture_mode_ui(cap_mode)
-
-            # 4. Reset Crosshair UI
-            cr = defaults.get('crosshair', {})
-            if hasattr(self, 'combo_style') and self.combo_style:
-                style = self.normalize_crosshair_style_value(cr.get('style', 'x'))
-                display_names = [display for display, internal in self.crosshair_style_options if internal == style]
-                idx = self.combo_style.findText(display_names[0] if display_names else "X")
-                self.combo_style.setCurrentIndex(max(0, idx))
-            if hasattr(self, 'combo_color') and self.combo_color:
-                color_index = cr.get('color_index', None)
-                if isinstance(color_index, int) and 0 <= color_index < self.combo_color.count():
-                    self.combo_color.setCurrentIndex(color_index)
-                else:
-                    color_name = cr.get('color', 'Trắng')
-                    idx = self.combo_color.findText(color_name)
-                    self.combo_color.setCurrentIndex(idx if idx >= 0 else 10)
-            ads_cross = cr.get('ads_mode', 'HOLD')
-            if hasattr(self, 'btn_adsmode') and self.btn_adsmode:
-                self.btn_adsmode.setText(ads_cross)
-            self.update_ads_status_style(ads_cross)
-            if hasattr(self, 'btn_cross_toggle') and self.btn_cross_toggle:
-                self.btn_cross_toggle.setChecked(cr.get('active', True))
-            if hasattr(self, 'btn_cross_bind') and self.btn_cross_bind:
-                self.btn_cross_bind.setText(cr.get('toggle_key', 'none').upper())
-            if hasattr(self, 'crosshair') and self.crosshair:
-                self.crosshair.set_style(self.normalize_crosshair_style_value(cr.get('style', 'x')))
-                self.crosshair.set_color(cr.get('color', 'Trắng'))
-                self.crosshair.set_ads_mode(cr.get('ads_mode', 'HOLD'))
-
-            for scope_key, _ in getattr(self, "scope_order", []):
-                if scope_key in self.scope_sliders:
-                    self.scope_sliders[scope_key].setValue(100)
-                    self.update_scope_intensity_label(scope_key, 100)
-
-            aim_defaults = defaults.get("aim", {}) if isinstance(defaults.get("aim", {}), dict) else {}
-            aim_runtime = aim_defaults.get("runtime", {}) if isinstance(aim_defaults.get("runtime", {}), dict) else {}
-            aim_meta = aim_defaults.get("meta", {}) if isinstance(aim_defaults.get("meta", {}), dict) else {}
-            aim_bindings = aim_defaults.get("bindings", {}) if isinstance(aim_defaults.get("bindings", {}), dict) else {}
-            aim_sliders = aim_defaults.get("sliders", {}) if isinstance(aim_defaults.get("sliders", {}), dict) else {}
-            aim_toggles = aim_defaults.get("toggles", {}) if isinstance(aim_defaults.get("toggles", {}), dict) else {}
-            aim_dropdowns = aim_defaults.get("dropdowns", {}) if isinstance(aim_defaults.get("dropdowns", {}), dict) else {}
-            aim_colors = aim_defaults.get("colors", {}) if isinstance(aim_defaults.get("colors", {}), dict) else {}
-            aim_file_locations = aim_defaults.get("file_locations", {}) if isinstance(aim_defaults.get("file_locations", {}), dict) else {}
-            aim_minimize = aim_defaults.get("minimize", {}) if isinstance(aim_defaults.get("minimize", {}), dict) else {}
-            aim_capture_mode = str(
-                aim_runtime.get("capture_backend")
-                or aim_dropdowns.get("Screen Capture Method")
-                or "DirectX"
-            )
-            self.set_aim_capture_mode_ui(aim_capture_mode)
-            if hasattr(self, "combo_aim_target_priority") and self.combo_aim_target_priority:
-                priority_text = str(aim_dropdowns.get("Target Priority", "Body -> Head"))
-                if priority_text not in ("Body -> Head", "Head -> Body"):
-                    priority_text = "Body -> Head"
-                self.combo_aim_target_priority.setCurrentText(priority_text)
-            selected_model = aim_runtime.get("model") or aim_meta.get("last_loaded_model") or ""
-            if str(selected_model).upper() == "N/A":
-                selected_model = ""
-            self.refresh_aim_model_list(str(selected_model))
-            if hasattr(self, "aim_btn_primary") and self.aim_btn_primary:
-                primary_key = str(aim_bindings.get("Aim Keybind", "Right")).upper()
-                self.aim_btn_primary.setText("RIGHT MOUSE" if primary_key == "RIGHT" else primary_key)
-            if hasattr(self, "aim_btn_secondary") and self.aim_btn_secondary:
-                secondary_key = str(aim_bindings.get("Second Aim Keybind", "ctrl")).upper()
-                self.aim_btn_secondary.setText("LEFT CTRL" if secondary_key in ("LMENU", "LCONTROL", "CTRL") else secondary_key)
-            if hasattr(self, "aim_btn_trigger") and self.aim_btn_trigger:
-                self.aim_btn_trigger.setText(str(aim_bindings.get("Toggle Trigger Keybind", "F7")).upper())
-            if hasattr(self, "aim_btn_emergency_stop") and self.aim_btn_emergency_stop:
-                self.aim_btn_emergency_stop.setText(str(aim_bindings.get("Emergency Stop Keybind", "F8")).upper())
-            if hasattr(self, "aim_slider_fov") and self.aim_slider_fov:
-                fov_value = int(aim_sliders.get("FOV Size", 300))
-                fov_value = max(10, min(640, fov_value))
-                self.aim_slider_fov.setValue(fov_value)
-                self.update_aim_fov_label(fov_value)
-            if hasattr(self, "aim_slider_confidence") and self.aim_slider_confidence:
-                confidence_value = int(aim_sliders.get("AI Minimum Confidence", 45))
-                confidence_value = max(1, min(100, confidence_value))
-                self.aim_slider_confidence.setValue(confidence_value)
-                self.update_aim_confidence_label(confidence_value)
-            if hasattr(self, "aim_slider_trigger_delay") and self.aim_slider_trigger_delay:
-                raw_delay = aim_sliders.get("Auto Trigger Delay", 0.1)
-                delay_ms = int(round(float(raw_delay) * 1000)) if float(raw_delay) <= 1.0 else int(round(float(raw_delay)))
-                delay_ms = max(10, min(1000, delay_ms))
-                self.aim_slider_trigger_delay.setValue(delay_ms)
-                self.update_aim_trigger_delay_label(delay_ms)
-            if hasattr(self, "aim_slider_capture_fps") and self.aim_slider_capture_fps:
-                capture_fps_value = int(round(float(aim_sliders.get("Capture FPS", 144))))
-                capture_fps_value = max(1, min(240, capture_fps_value))
-                self.aim_slider_capture_fps.setValue(capture_fps_value)
-                self.update_aim_capture_fps_label(capture_fps_value)
-            if hasattr(self, "aim_slider_primary_position") and self.aim_slider_primary_position:
-                primary_position_value = int(round(float(aim_sliders.get("Primary Aim Position", 50))))
-                primary_position_value = max(0, min(100, primary_position_value))
-                self.aim_slider_primary_position.setValue(primary_position_value)
-                self.update_aim_primary_position_label(primary_position_value)
-            if hasattr(self, "aim_slider_secondary_position") and self.aim_slider_secondary_position:
-                secondary_position_value = int(round(float(aim_sliders.get("Secondary Aim Position", 50))))
-                secondary_position_value = max(0, min(100, secondary_position_value))
-                self.aim_slider_secondary_position.setValue(secondary_position_value)
-                self.update_aim_secondary_position_label(secondary_position_value)
-            if hasattr(self, "aim_slider_sensitivity") and self.aim_slider_sensitivity:
-                sensitivity_value = float(aim_sliders.get("Mouse Sensitivity (+/-)", 0.80))
-                sensitivity_slider = max(1, min(100, int(round(sensitivity_value * 100.0))))
-                self.aim_slider_sensitivity.setValue(sensitivity_slider)
-                self.update_aim_sensitivity_label(sensitivity_slider)
-            if hasattr(self, "aim_slider_ema") and self.aim_slider_ema:
-                ema_value = float(aim_sliders.get("EMA Smoothening", 0.50))
-                ema_slider = max(1, min(100, int(round(ema_value * 100.0))))
-                self.aim_slider_ema.setValue(ema_slider)
-                self.update_aim_ema_label(ema_slider)
-            if hasattr(self, "aim_slider_dynamic_fov") and self.aim_slider_dynamic_fov:
-                dynamic_fov_value = int(round(float(aim_sliders.get("Dynamic FOV Size", 10))))
-                dynamic_fov_value = max(10, min(640, dynamic_fov_value))
-                self.aim_slider_dynamic_fov.setValue(dynamic_fov_value)
-                self.update_aim_dynamic_fov_label(dynamic_fov_value)
-            if hasattr(self, "aim_slider_sticky_threshold") and self.aim_slider_sticky_threshold:
-                sticky_threshold_value = int(round(float(aim_sliders.get("Sticky Aim Threshold", 0))))
-                sticky_threshold_value = max(0, min(100, sticky_threshold_value))
-                self.aim_slider_sticky_threshold.setValue(sticky_threshold_value)
-                self.update_aim_sticky_threshold_label(sticky_threshold_value)
-            if hasattr(self, "aim_slider_jitter") and self.aim_slider_jitter:
-                jitter_value = int(aim_sliders.get("Mouse Jitter", 4))
-                jitter_value = max(0, min(15, jitter_value))
-                self.aim_slider_jitter.setValue(jitter_value)
-                self.update_aim_jitter_label(jitter_value)
-            self.load_aim_listing_sliders(aim_sliders)
-            if hasattr(self, "aim_chk_show_fov") and self.aim_chk_show_fov:
-                self.aim_chk_show_fov.setChecked(bool(aim_toggles.get("Show FOV", True)))
-            if hasattr(self, "aim_chk_show_detect") and self.aim_chk_show_detect:
-                self.aim_chk_show_detect.setChecked(bool(aim_toggles.get("Show Detected Player", False)))
-            self.load_aim_toggle_controls(aim_toggles)
-            self.load_aim_dropdown_controls(aim_dropdowns)
-            self.load_aim_color_controls(aim_colors)
-            self.load_aim_file_controls(aim_file_locations)
-            self.load_aim_minimize_controls(aim_minimize)
-            self.temp_aim_primary_key_value = None
-            self.temp_aim_secondary_key_value = None
-            self.temp_aim_trigger_key_value = None
-            self.temp_aim_emergency_key_value = None
-
-
+            self.settings_manager.reset_to_defaults()
+            self.refresh_ui_from_settings(force_reload=True, sync_runtime=True)
             self.play_action_beep("reset")
             self.show_bottom_action_status("Đã đưa cấu hình về mặc định.", tone="success")
         except Exception as e:
             print(f'[ERROR] reset_to_defaults failed: {e}')
             self.show_bottom_action_status("Reset thất bại.", tone="error", auto_hide_ms=3000)
+
+    def refresh_ui_from_settings(self, force_reload=False, sync_runtime=False):
+        if force_reload:
+            self.settings_manager._cache = None
+
+        self.load_config()
+        self.load_crosshair_settings()
+        self._load_overlay_enabled_setting()
+        self._sync_game_overlay_startup()
+
+        if hasattr(self, "last_data"):
+            self.update_home_snapshot()
+            self.update_aim_visual_overlay(self.last_data)
+            self.update_ui_state(self.last_data)
+
+        if sync_runtime:
+            capture_mode = getattr(self, "current_capture_mode", "DXCAM")
+            self.set_capture_mode(capture_mode)
+            self.signal_settings_changed.emit()
 
     def save_config(self):
         """Manually Save All Settings (Triggered by Button)"""
@@ -6807,7 +6730,7 @@ class MacroWindow(QMainWindow):
             else:
                 guitoggle_key = self.btn_guitoggle.text().lower()
             
-            capture_mode = getattr(self, 'current_capture_mode', 'DXGI')
+            capture_mode = getattr(self, 'current_capture_mode', 'DXCAM')
             aim_capture_mode = getattr(self, 'current_aim_capture_mode', 'DirectX')
                 
             # Construct Data
@@ -6845,6 +6768,9 @@ class MacroWindow(QMainWindow):
                 self.temp_overlay_key_value = None
             else:
                 current_settings["overlay_key"] = self.btn_overlay_key.text().lower()
+            current_settings["overlay_enabled"] = bool(
+                self._overlay_enabled if hasattr(self, "_overlay_enabled") else True
+            )
 
             current_settings["scope_intensity"] = {
                 scope_key: slider.value()
@@ -7044,62 +6970,363 @@ class MacroWindow(QMainWindow):
 
     def set_backend(self, backend):
         self.backend = backend
+        self._runtime_started = backend is not None
+
+    def set_runtime_starter(self, runtime_starter):
+        self._runtime_starter = runtime_starter
+
+    def ensure_runtime_started(self):
+        if self.backend is not None and self._runtime_started:
+            return True
+        starter = getattr(self, "_runtime_starter", None)
+        if starter is None:
+            return False
+        try:
+            starter()
+            self._sync_game_overlay_startup()
+            return self.backend is not None
+        except Exception:
+            logger.exception("Failed to start runtime on demand")
+            return False
 
     def set_runtime_handles(self, keyboard_listener=None, mouse_listener=None, native_input_worker=None, timers=None):
         self.keyboard_listener = keyboard_listener
         self.mouse_listener = mouse_listener
         self.native_input_worker = native_input_worker
         self._runtime_timers = list(timers or [])
+        self._sync_game_overlay_startup()
+
+    def _apply_overlay_enabled_ui(self, enabled: bool):
+        self._overlay_enabled = bool(enabled)
+        if hasattr(self, "btn_overlay_toggle") and self.btn_overlay_toggle:
+            self.btn_overlay_toggle.setText("ON" if self._overlay_enabled else "OFF")
+            self.btn_overlay_toggle.setProperty("state", "ON" if self._overlay_enabled else "OFF")
+            self.repolish(self.btn_overlay_toggle)
+
+    def _load_overlay_enabled_setting(self) -> bool:
+        enabled = bool(self.settings_manager.get("overlay_enabled", True))
+        self._apply_overlay_enabled_ui(enabled)
+        return enabled
+
+    def _ensure_game_overlay(self):
+        if self.game_overlay is None:
+            self.game_overlay = GameOverlay(None)
+            logger.info("game overlay created")
+        return self.game_overlay
+
+    def _update_game_overlay_from_last_data(self):
+        data = getattr(self, "last_data", None)
+        if not isinstance(data, dict):
+            return
+        try:
+            g1 = data.get("gun1", {}) or {}
+            g2 = data.get("gun2", {}) or {}
+            active_slot = data.get("active_slot", 1)
+            active_gun = g1 if active_slot == 1 else g2
+            weapon_name = "NONE" if str(active_gun.get("name", "NONE")) == "None" else str(active_gun.get("name", "NONE"))
+            scope_name = "NONE" if str(active_gun.get("scope", "NONE")) == "None" else str(active_gun.get("scope", "NONE"))
+            display_ai_status = data.get("ai_status", "HIBERNATE")
+            overlay_signature = (
+                weapon_name,
+                scope_name,
+                data.get("stance"),
+                active_gun.get("grip", "NONE"),
+                active_gun.get("accessories", "NONE"),
+                bool(data.get("paused", False)),
+                bool(data.get("firing", False)),
+                display_ai_status,
+            )
+            overlay = self._ensure_game_overlay()
+            overlay.update_status(
+                weapon_name,
+                scope_name,
+                data.get("stance", "Stand"),
+                grip=active_gun.get("grip", "NONE"),
+                muzzle=active_gun.get("accessories", "NONE"),
+                is_paused=data.get("paused", False),
+                is_firing=data.get("firing", False),
+                ai_status=display_ai_status,
+            )
+            self._last_game_overlay_signature = overlay_signature
+            logger.info("game overlay updated")
+        except Exception:
+            logger.exception("Failed updating game overlay from last data")
+
+    def _sync_game_overlay_startup(self):
+        self._load_overlay_enabled_setting()
+        if not self._overlay_enabled or self.backend is None or not self._runtime_started:
+            return
+        overlay = self._ensure_game_overlay()
+        overlay.show()
+        logger.info("game overlay shown")
+        self._update_game_overlay_from_last_data()
+
+    def _ensure_crosshair_overlay(self):
+        if self.crosshair is None:
+            self.crosshair = CrosshairOverlay(self)
+            if hasattr(self, "combo_style") and self.combo_style:
+                style_map = dict(self.crosshair_style_options)
+                self.crosshair.set_style(
+                    style_map.get(self.combo_style.currentText(), "x")
+                )
+            if hasattr(self, "combo_color") and self.combo_color:
+                color_idx = self.combo_color.currentIndex()
+                color_name = self.combo_color.itemText(color_idx) if color_idx >= 0 else "Đỏ"
+                self.crosshair.set_color(color_name)
+            if hasattr(self, "btn_adsmode") and self.btn_adsmode:
+                self.crosshair.set_ads_mode(self.btn_adsmode.text().strip().upper() or "HOLD")
+        return self.crosshair
+
+    def _dispose_overlay(self, overlay_name: str):
+        overlay = getattr(self, overlay_name, None)
+        if overlay is None:
+            return
+        try:
+            for timer_name in ("flash_timer", "detect_timer", "timer_ads"):
+                overlay_timer = getattr(overlay, timer_name, None)
+                if overlay_timer is not None:
+                    overlay_timer.stop()
+            overlay.hide()
+            overlay.close()
+            overlay.deleteLater()
+        except Exception:
+            logger.exception("Failed disposing overlay: %s", overlay_name)
+        setattr(self, overlay_name, None)
+        if overlay_name == "game_overlay":
+            self._last_game_overlay_signature = None
+
+    def _cleanup_dummy_threads(self, purge_stale: bool = False):
+        active_threads = getattr(threading, "_active", None)
+        for thread in list(threading.enumerate()):
+            if thread.__class__.__name__ != "_DummyThread":
+                continue
+            if purge_stale and isinstance(active_threads, dict):
+                active_threads.pop(thread.ident, None)
+                logger.warning(
+                    "Purged stale dummy thread record after listener shutdown: %s | source=pynput/native hook bookkeeping",
+                    thread.name,
+                )
+                continue
+            logger.warning(
+                "Dummy thread still registered after listener stop: %s | source=native hook callback thread",
+                thread.name,
+            )
+
+    def _log_listener_native_sources(self):
+        for label, listener in (
+            ("keyboard", getattr(self, "keyboard_listener", None)),
+            ("mouse", getattr(self, "mouse_listener", None)),
+        ):
+            if listener is None or not hasattr(listener, "get_native_callback_source"):
+                continue
+            source = listener.get_native_callback_source()
+            if source:
+                logger.warning("%s listener native callback source detected: %s", label, source)
+
+    def request_app_exit(self):
+        self._perform_shutdown()
+
+    def _listener_is_alive(self, listener) -> bool:
+        if listener is None:
+            return False
+        running = bool(getattr(listener, "running", False))
+        native_listener = getattr(listener, "listener", None)
+        if native_listener is None:
+            return running
+        try:
+            return running or bool(native_listener.is_alive())
+        except Exception:
+            return running
+
+    def _timer_is_active(self, timer) -> bool:
+        if timer is None:
+            return False
+        if hasattr(timer, "isActive"):
+            try:
+                return bool(timer.isActive())
+            except Exception:
+                return False
+        return bool(getattr(timer, "active", False))
+
+    def _collect_shutdown_snapshot(self) -> dict:
+        timer_states = {}
+        for timer_name in (
+            "_layout_sync_timer",
+            "_hover_hint_timer",
+            "_bottom_action_status_timer",
+        ):
+            timer_states[timer_name] = self._timer_is_active(getattr(self, timer_name, None))
+
+        runtime_timer_states = []
+        for timer in getattr(self, "_runtime_timers", []):
+            runtime_timer_states.append(
+                f"{timer.__class__.__name__}:{'active' if self._timer_is_active(timer) else 'stopped'}"
+            )
+
+        overlay_states = {}
+        for overlay_name in ("game_overlay", "crosshair"):
+            overlay = getattr(self, overlay_name, None)
+            overlay_states[overlay_name] = (
+                overlay is not None and not overlay.isHidden() and overlay.isVisible()
+            )
+
+        alive_threads = []
+        background_threads = []
+        dummy_threads = []
+        for thread in threading.enumerate():
+            if not thread.is_alive():
+                continue
+            class_name = thread.__class__.__name__
+            descriptor = f"{thread.name}(class={class_name},daemon={thread.daemon})"
+            alive_threads.append(descriptor)
+            if thread is not threading.main_thread() and class_name != "_DummyThread":
+                background_threads.append(descriptor)
+            if class_name == "_DummyThread":
+                dummy_threads.append(descriptor)
+
+        backend = getattr(self, "backend", None)
+        native_input_worker = getattr(self, "native_input_worker", None)
+        return {
+            "backend_running": bool(backend is not None and backend.isRunning()),
+            "native_input_worker_running": bool(
+                native_input_worker is not None and native_input_worker.isRunning()
+            )
+            if native_input_worker is not None and hasattr(native_input_worker, "isRunning")
+            else bool(getattr(native_input_worker, "running", False)),
+            "keyboard_listener_alive": self._listener_is_alive(getattr(self, "keyboard_listener", None)),
+            "mouse_listener_alive": self._listener_is_alive(getattr(self, "mouse_listener", None)),
+            "timer_states": timer_states,
+            "runtime_timers": runtime_timer_states,
+            "overlay_visible": overlay_states,
+            "alive_threads": alive_threads,
+            "background_threads": background_threads,
+            "dummy_threads": dummy_threads,
+        }
+
+    def _log_shutdown_snapshot(self, stage: str) -> dict:
+        snapshot = self._collect_shutdown_snapshot()
+        logger.info(
+            "Shutdown %s | backend_running=%s native_input_worker_running=%s keyboard_listener_alive=%s mouse_listener_alive=%s",
+            stage,
+            snapshot["backend_running"],
+            snapshot["native_input_worker_running"],
+            snapshot["keyboard_listener_alive"],
+            snapshot["mouse_listener_alive"],
+        )
+        logger.info(
+            "Shutdown %s | timer_states=%s runtime_timers=%s overlay_visible=%s",
+            stage,
+            snapshot["timer_states"],
+            snapshot["runtime_timers"],
+            snapshot["overlay_visible"],
+        )
+        logger.info(
+            "Shutdown %s | alive_threads=%s",
+            stage,
+            snapshot["alive_threads"],
+        )
+        if snapshot["dummy_threads"]:
+            logger.warning(
+                "Shutdown %s | dummy_threads=%s | source=alien/native callback thread, likely pynput or another native hook callback",
+                stage,
+                snapshot["dummy_threads"],
+            )
+        return snapshot
 
     def shutdown_application(self):
-        if self._shutdown_in_progress:
-            return
+        if self._is_shutting_down:
+            logger.info("Shutdown skipped: already in progress")
+            return None
+        self._is_shutting_down = True
         self._shutdown_in_progress = True
+        logger.info("Shutdown started")
+        try:
+            self._log_shutdown_snapshot("pre-cleanup")
+            timer_attrs = (
+                "_layout_sync_timer",
+                "_hover_hint_timer",
+                "_bottom_action_status_timer",
+            )
+            for timer_name in timer_attrs:
+                timer = getattr(self, timer_name, None)
+                if timer is None:
+                    continue
+                try:
+                    timer.stop()
+                    logger.info("Stopped UI timer: %s", timer_name)
+                except Exception:
+                    logger.exception("Failed stopping UI timer: %s", timer_name)
 
-        for timer in getattr(self, "_runtime_timers", []):
-            try:
-                timer.stop()
-            except Exception:
-                pass
+            for timer in getattr(self, "_runtime_timers", []):
+                try:
+                    timer.stop()
+                    logger.info("Stopped runtime handle: %s", timer.__class__.__name__)
+                except Exception:
+                    logger.exception("Failed stopping runtime handle: %s", timer)
 
-        for listener in (getattr(self, "keyboard_listener", None), getattr(self, "mouse_listener", None)):
-            try:
-                if listener is not None and hasattr(listener, "stop_listening"):
-                    listener.stop_listening()
-            except Exception:
-                pass
-        native_input_worker = getattr(self, "native_input_worker", None)
-        if native_input_worker is not None:
-            try:
-                if hasattr(native_input_worker, "running"):
-                    native_input_worker.running = False
-                if hasattr(native_input_worker, "stop"):
-                    native_input_worker.stop()
-                if hasattr(native_input_worker, "wait"):
-                    native_input_worker.wait(150)
-            except Exception:
-                pass
+            for listener in (getattr(self, "keyboard_listener", None), getattr(self, "mouse_listener", None)):
+                try:
+                    if listener is not None and hasattr(listener, "stop_listening"):
+                        logger.info("Stopping listener: %s", listener.__class__.__name__)
+                        listener.stop_listening()
+                except Exception:
+                    logger.exception("Failed stopping listener: %s", listener)
+            self._log_listener_native_sources()
+            self._cleanup_dummy_threads(purge_stale=True)
+            native_input_worker = getattr(self, "native_input_worker", None)
+            if native_input_worker is not None:
+                try:
+                    logger.info("Stopping native input worker")
+                    if hasattr(native_input_worker, "running"):
+                        native_input_worker.running = False
+                    if hasattr(native_input_worker, "stop"):
+                        native_input_worker.stop()
+                    if hasattr(native_input_worker, "wait"):
+                        native_input_worker.wait(75)
+                except Exception:
+                    logger.exception("Failed stopping native input worker")
 
-        if getattr(self, "backend", None) is not None:
-            try:
-                self.backend.stop()
-                self.backend.wait(150)
-            except Exception:
-                pass
+            if getattr(self, "backend", None) is not None:
+                try:
+                    backend_wait_ms = 1200
+                    logger.info("Stopping backend thread")
+                    self.backend.stop()
+                    logger.info("Waiting backend thread for %sms", backend_wait_ms)
+                    self.backend.wait(backend_wait_ms)
+                    if self.backend.isRunning():
+                        logger.warning("backend thread did not stop within final timeout")
+                    else:
+                        logger.info("backend thread stopped")
+                except Exception:
+                    logger.exception("Failed stopping backend thread")
 
-        if hasattr(self, "tray_manager") and self.tray_manager:
-            try:
-                self.tray_manager.hide()
-            except Exception:
-                pass
+            if hasattr(self, "tray_manager") and self.tray_manager:
+                try:
+                    logger.info("Hiding tray icon")
+                    self.tray_manager.hide()
+                    if hasattr(self.tray_manager, "tray_icon") and self.tray_manager.tray_icon:
+                        self.tray_manager.tray_icon.deleteLater()
+                    self.tray_manager = None
+                except Exception:
+                    logger.exception("Failed hiding tray icon")
 
-        for overlay_name in ("game_overlay", "crosshair"):
-            try:
-                overlay = getattr(self, overlay_name, None)
-                if overlay is not None:
-                    overlay.close()
-            except Exception:
-                pass
+            for overlay_name in ("game_overlay", "crosshair"):
+                self._dispose_overlay(overlay_name)
+                logger.info("Closed overlay: %s", overlay_name)
+            self._cleanup_dummy_threads(purge_stale=True)
+            final_snapshot = self._log_shutdown_snapshot("post-cleanup")
+            if final_snapshot["background_threads"]:
+                logger.warning(
+                    "Background threads still alive after cleanup timeout: %s",
+                    final_snapshot["background_threads"],
+                )
+            else:
+                logger.info("all threads exited")
+            logger.info("Shutdown completed")
+            return final_snapshot
+        except Exception:
+            logger.exception("Shutdown failed")
+            return None
 
     def update_ads_display(self, mode: str):
         """Hiển thị trạng thái hành động ở thanh dưới."""
@@ -7140,20 +7367,17 @@ class MacroWindow(QMainWindow):
 
 
     def minimize_to_taskbar(self):
-        self.showMinimized()
+        self.hide_to_tray()
 
     def hide_to_tray(self):
-        print("[DEBUG] hide_to_tray: Forcing window to hide...")
-        # Clear all pending events first
-        QApplication.processEvents()
-        
-        self.setVisible(False)
-        self.hide()
-        
-        # Process events again to ensure the OS receives the hide command
-        QApplication.processEvents()
-        if hasattr(self, 'tray_manager') and self.tray_manager:
+        if not hasattr(self, "tray_manager") or self.tray_manager is None:
+            self.tray_manager = TrayManager(self)
+        if hasattr(self, "tray_manager") and self.tray_manager:
             self.tray_manager.show()
+        self.hide()
+        QApplication.processEvents()
+        logger.info("window minimized to tray")
+        if hasattr(self, 'tray_manager') and self.tray_manager and self.tray_manager.tray_icon:
             self.tray_manager.tray_icon.showMessage(
                 "Macro Di88",
                 "Ứng dụng đã được đưa xuống khay hệ thống.",
@@ -7175,15 +7399,37 @@ class MacroWindow(QMainWindow):
             self._perform_shutdown()
 
     def _perform_shutdown(self):
-        # Force terminate after 2 seconds if clean shutdown hangs
-        QTimer.singleShot(2000, lambda: os._exit(0))
-        
-        self.shutdown_application()
-        if QApplication.instance():
-            QApplication.instance().quit()
-        
-        # Immediate exit after quit signal
-        os._exit(0)
+        logger.info("Close action: quit application")
+        final_snapshot = self.shutdown_application()
+        if final_snapshot and (
+            final_snapshot["background_threads"]
+            or final_snapshot["backend_running"]
+            or final_snapshot["keyboard_listener_alive"]
+            or final_snapshot["mouse_listener_alive"]
+            or final_snapshot["native_input_worker_running"]
+        ):
+            logger.warning("Incomplete shutdown detected; force-exit fallback remains armed")
+            fallback_timer = threading.Timer(2.0, lambda: os._exit(0))
+            fallback_timer.daemon = True
+            fallback_timer.start()
+        app = QApplication.instance()
+        if app:
+            # Đóng mọi top-level Qt object trước khi thoát event loop để tránh treo app.exec().
+            for widget in list(app.topLevelWidgets()):
+                if widget is self:
+                    continue
+                try:
+                    widget.hide()
+                    widget.close()
+                except Exception:
+                    logger.exception("Failed closing top-level widget during shutdown: %s", widget)
+            try:
+                self.hide()
+                app.processEvents()
+            except Exception:
+                logger.exception("Failed closing Qt windows during shutdown")
+            logger.info("Requesting Qt application exit")
+            app.exit(0)
 
     def showEvent(self, event):
         """Force UI update when window is shown"""
@@ -7324,9 +7570,13 @@ class MacroWindow(QMainWindow):
 
         # OPTIMIZATION: If window is hidden, only update the overlay, skip main UI labels
         if not self.isVisible():
-            if self._last_game_overlay_signature != overlay_signature:
+            if self._overlay_enabled and self._last_game_overlay_signature != overlay_signature:
+                overlay = self._ensure_game_overlay()
+                if not overlay.isVisible():
+                    overlay.show()
+                    logger.info("game overlay shown")
                 self._last_game_overlay_signature = overlay_signature
-                self.game_overlay.update_status(
+                overlay.update_status(
                     weapon_name,
                     scope_name,
                     data["stance"],
@@ -7336,6 +7586,7 @@ class MacroWindow(QMainWindow):
                     is_firing=data.get("firing", False),
                     ai_status=display_ai_status
                 )
+                logger.info("game overlay updated")
             self._last_macro_ui_signature = macro_signature
             return
 
@@ -7382,10 +7633,20 @@ class MacroWindow(QMainWindow):
 
         # Remove active slot glow - Use static neutral colors
         if self.panel_g1.property("_macro_style") != "neutral":
-            self.panel_g1.setStyleSheet("QFrame#P1 { background: transparent; border: none; }")
+            self.panel_g1.setStyleSheet(
+                "QFrame#P1 { "
+                "background: transparent; "
+                "border: 1px solid rgba(255, 255, 255, 0.04); "
+                "border-radius: 8px; }"
+            )
             self.panel_g1.setProperty("_macro_style", "neutral")
         if self.panel_g2.property("_macro_style") != "neutral":
-            self.panel_g2.setStyleSheet("QFrame#P2 { background: transparent; border: none; }")
+            self.panel_g2.setStyleSheet(
+                "QFrame#P2 { "
+                "background: transparent; "
+                "border: 1px solid rgba(255, 255, 255, 0.04); "
+                "border-radius: 8px; }"
+            )
             self.panel_g2.setProperty("_macro_style", "neutral")
 
         def item_style(lbl, val):
@@ -7393,9 +7654,15 @@ class MacroWindow(QMainWindow):
             if lbl.property("_macro_item_style") == style_key:
                 return
             if style_key == "none":
-                lbl.setStyleSheet("color: #6e6e6e; font-size: 11px; font-weight: bold; background: transparent; border: none; padding: 1px 0;")
+                lbl.setStyleSheet(
+                    "color: #727b86; font-size: 12px; font-weight: 600; "
+                    "background: transparent; border: none; padding: 1px 0;"
+                )
             else:
-                lbl.setStyleSheet("color: #f2f2f2; font-size: 11px; font-weight: bold; background: transparent; border: none; padding: 1px 0;")
+                lbl.setStyleSheet(
+                    "color: #eef2f6; font-size: 12px; font-weight: 600; "
+                    "background: transparent; border: none; padding: 1px 0;"
+                )
             lbl.setProperty("_macro_item_style", style_key)
 
         item_style(self.lbl_g1_name, g1_name)
@@ -7409,9 +7676,13 @@ class MacroWindow(QMainWindow):
         item_style(self.lbl_g2_muzzle, g2_muzzle)
         
         # Update Overlay
-        if self._last_game_overlay_signature != overlay_signature:
+        if self._overlay_enabled and self._last_game_overlay_signature != overlay_signature:
+            overlay = self._ensure_game_overlay()
+            if not overlay.isVisible():
+                overlay.show()
+                logger.info("game overlay shown")
             self._last_game_overlay_signature = overlay_signature
-            self.game_overlay.update_status(
+            overlay.update_status(
                 weapon_name,
                 scope_name,
                 data["stance"],
@@ -7421,6 +7692,7 @@ class MacroWindow(QMainWindow):
                 is_firing=data.get("firing", False),
                 ai_status=display_ai_status
             )
+            logger.info("game overlay updated")
 
         stance = data["stance"]
         s_lower = str(stance).lower()
@@ -7506,10 +7778,13 @@ class MacroWindow(QMainWindow):
             self.windowState()
             & ~Qt.WindowState.WindowMinimized
         )
-        self.show()
+        if hasattr(self, "tray_manager") and self.tray_manager:
+            self.tray_manager.hide()
+        self.showNormal()
         self.setFixedWidth(self.WINDOW_WIDTH)
         self.raise_()
         self.activateWindow()
+        logger.info("window restored from tray")
         self.position_aim_model_notice()
         self._layout_sync_timer.start(120)
         if hasattr(self, "last_data"):
@@ -7575,8 +7850,11 @@ class MacroWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Cleanup resources on close, including detached overlays."""
-        self.shutdown_application()
-        event.accept()
-        app = QApplication.instance()
-        if app is not None:
-            app.quit()
+        if self._is_shutting_down:
+            logger.info("closeEvent accepted during shutdown")
+            event.accept()
+            return
+
+        logger.info("closeEvent redirected to handle_close_action")
+        event.ignore()
+        self.handle_close_action()

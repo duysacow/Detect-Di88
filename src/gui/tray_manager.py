@@ -1,5 +1,5 @@
 from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
 from src.core.path_utils import get_resource_path
 
@@ -31,13 +31,16 @@ class TrayManager:
 
         # Exit Action
         action_exit = QAction("Exit", self.main_window)
-        action_exit.triggered.connect(QApplication.instance().quit)
+        action_exit.triggered.connect(self.main_window.request_app_exit)
         menu.addAction(action_exit)
 
         self.tray_icon.setContextMenu(menu)
 
     def on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
             self.main_window.restore_window()
 
     def show(self):

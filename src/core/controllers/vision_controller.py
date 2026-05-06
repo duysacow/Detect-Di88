@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
+
+logger = logging.getLogger(__name__)
 
 
 # Hợp nhất kết quả detect vào state runtime và GUI
@@ -13,25 +16,42 @@ class VisionController:
         self.pubg_config = pubg_config
         self._running = False
         self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
 
     def start(self) -> None:
         if self._running:
             return
         self._running = True
-        self._thread = threading.Thread(target=self._config_poll_loop, daemon=True)
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._config_poll_loop,
+            name="_config_poll_loop",
+            daemon=True,
+        )
         self._thread.start()
 
     def stop(self) -> None:
         self._running = False
+        self._stop_event.set()
+        thread = self._thread
+        if thread is None:
+            return
+        thread.join(0.2)
+        if thread.is_alive():
+            logger.warning("config poll loop did not stop within timeout")
+        else:
+            logger.info("config poll loop stopped")
+        self._thread = None
 
     def _config_poll_loop(self) -> None:
-        while self._running:
+        while self._running and not self._stop_event.is_set():
             if self.pubg_config.parse_config():
                 self.pubg_config.debug_print()
                 ads = getattr(self.pubg_config, "ads_mode", None)
                 if ads:
                     self.gui_bridge.emit_ads_update(ads.upper())
-            time.sleep(0.1)
+            if self._stop_event.wait(0.1):
+                break
 
     def handle_detection(self, data: dict[str, object]) -> None:
         def normalize_scope(name: object) -> str:
