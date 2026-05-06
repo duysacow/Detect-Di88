@@ -1,26 +1,123 @@
 {
-  "capture_mode": "DXCAM",
-  "ads_mode": "HOLD",
   "keybinds": {
-    "gui_toggle": "f1",
-    "overlay": "delete",
-    "fastloot": "caps_lock"
+    "gui_toggle": "f1"
   },
-  "crosshair": {
-    "active": true,
-    "style": "1: Gap Cross",
-    "color": "Äá» Cam",
-    "color_index": 1,
-    "toggle_key": "home",
-    "ads_mode": "HOLD"
-  },
+  "ads_mode": "HOLD",
   "stop_keys": [
     "x",
     "g",
     "5"
   ],
-  "scale": {},
-  "fast_loot": true,
+  "crosshair": {
+    "active": true,
+    "style": "minimal",
+    "color": "Trắng",
+    "color_index": 10,
+    "toggle_key": "none",
+    "ads_mode": "HOLD"
+  },
+  "capture_mode": "MSS",
+  "aim": {
+    "runtime": {
+      "capture_backend": "DirectX",
+      "model": ""
+    },
+    "dropdowns": {
+      "Screen Capture Method": "DirectX",
+      "Target Priority": "Body -> Head",
+      "Prediction Method": "Kalman Filter",
+      "Detection Area Type": "Closest to Center Screen",
+      "Aiming Boundaries Alignment": "Center",
+      "Mouse Movement Method": "Mouse Event",
+      "Tracer Position": "Bottom",
+      "Movement Path": "Cubic Bezier",
+      "Image Size": "640",
+      "Target Class": "Best Confidence"
+    },
+    "meta": {
+      "last_loaded_model": "N/A"
+    },
+    "bindings": {
+      "Aim Keybind": "right",
+      "Second Aim Keybind": "ctrl",
+      "Toggle Trigger Keybind": "f7",
+      "Emergency Stop Keybind": "f8"
+    },
+    "sliders": {
+      "FOV Size": 300,
+      "AI Minimum Confidence": 45,
+      "Auto Trigger Delay": 0.1,
+      "Capture FPS": 144,
+      "Primary Aim Position": 50,
+      "Secondary Aim Position": 50,
+      "Mouse Sensitivity (+/-)": 0.8,
+      "EMA Smoothening": 0.5,
+      "Dynamic FOV Size": 10,
+      "Sticky Aim Threshold": 0,
+      "Mouse Jitter": 4,
+      "Y Offset (Up/Down)": 0,
+      "Y Offset (%)": 50,
+      "X Offset (Left/Right)": 0,
+      "X Offset (%)": 50,
+      "Kalman Lead Time": 0.1,
+      "WiseTheFox Lead Time": 0.15,
+      "Shalloe Lead Multiplier": 3.0,
+      "AI Confidence Font Size": 20,
+      "Corner Radius": 0,
+      "Border Thickness": 1.0,
+      "Opacity": 1.0
+    },
+    "toggles": {
+      "Show FOV": true,
+      "Show Detected Player": false,
+      "Constant AI Tracking": false,
+      "Sticky Aim": false,
+      "Predictions": false,
+      "Enable Model Switch Keybind": false,
+      "FOV": false,
+      "Dynamic FOV": false,
+      "Third Person Support": false,
+      "Masking": false,
+      "Cursor Check": false,
+      "Spray Mode": false,
+      "Collect Data While Playing": false,
+      "Auto Label Data": false,
+      "LG HUB Mouse Movement": false,
+      "Debug Mode": false,
+      "UI TopMost": false,
+      "StreamGuard": false
+    },
+    "colors": {
+      "FOV Color": "#FF8080FF",
+      "Detected Player Color": "#FF00FFFF",
+      "Theme Color": "#FF722ED1"
+    },
+    "file_locations": {
+      "ddxoft DLL Location": ""
+    },
+    "minimize": {
+      "Aim Assist": false,
+      "Aim Config": false,
+      "Predictions": false,
+      "Auto Trigger": false,
+      "FOV Config": false,
+      "ESP Config": false,
+      "Model Settings": false,
+      "Settings Menu": false,
+      "X/Y Percentage Adjustment": false,
+      "Theme Settings": false,
+      "Screen Settings": false
+    }
+  },
   "fast_loot_key": "caps_lock",
-  "overlay_key": "delete"
+  "fast_loot": true,
+  "slide_trick": true,
+  "overlay_key": "delete",
+  "scope_intensity": {
+    "normal": 100,
+    "x2": 100,
+    "x3": 100,
+    "x4": 100,
+    "x6": 100
+  }
 }

@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 import ctypes
-import locale
+import encodings.cp1252
 import os
 import sys
 from pathlib import Path
@@ -52,7 +52,7 @@ from PyQt6.QtWidgets import (QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QFra
 from PyQt6.QtCore import Qt
 
 def create_panel(title, color_hex, obj_name):
-    """M? t? ?? ???c l?m s?ch."""
+    """Helper tạo panel cài đặt."""
     panel = QFrame()
     panel.setObjectName(obj_name)
     panel.setProperty("class", "PanelFrame")
@@ -71,7 +71,7 @@ def create_panel(title, color_hex, obj_name):
     return panel, p_layout
 
 def add_setting_row(parent_layout, label_text, value_text):
-    """M? t? ?? ???c l?m s?ch."""
+    """Helper thêm một dòng cài đặt."""
     row_layout = QHBoxLayout()
     
     lbl = QLabel(label_text)
@@ -91,7 +91,7 @@ def add_setting_row(parent_layout, label_text, value_text):
     return btn
 
 def create_data_row(grid, row, label):
-    """M? t? ?? ???c l?m s?ch."""
+    """Helper tạo một dòng dữ liệu."""
     l = QLabel(f"{label}")
     l.setProperty("role", "row-label")
     
@@ -467,13 +467,12 @@ class ModernDialog(QDialog):
         return lambda checked=False: self.on_click(text)
 
     def on_click(self, value):
-        print(f"[DEBUG] ModernDialog: Button clicked -> {value}")
         self.result_value = value
         self.done(1)
 
 class AppNoticeDialog:
     @staticmethod
-    def question(parent, title, message, buttons=("CÃ³", "KhÃ´ng")):
+    def question(parent, title, message, buttons=("Có", "Không")):
         dlg = ModernDialog(parent, title, message, buttons=buttons, is_question=True)
         dlg.exec()
         return dlg.result_value == buttons[0]
@@ -485,11 +484,11 @@ class AppNoticeDialog:
 
     @staticmethod
     def warning(parent, title, message):
-        dlg = ModernDialog(parent, title, message, buttons=("Hiá»ƒu rá»“i",), is_question=False)
+        dlg = ModernDialog(parent, title, message, buttons=("Hiểu rồi",), is_question=False)
         dlg.exec()
 
     @staticmethod
-    def custom_choice(parent, title, message, buttons=("Táº¯t", "Xuá»‘ng Tray", "Há»§y")):
+    def custom_choice(parent, title, message, buttons=("Tắt", "Xuống Tray", "Hủy")):
         dlg = ModernDialog(parent, title, message, buttons=buttons, is_question=True)
         dlg.exec()
         return dlg.result_value
@@ -539,9 +538,9 @@ class HomePanelBuilder:
                 title="MACRO STATUS",
                 title_color="#ff8f8f",
                 rows=[
-                    ("TÆ° tháº¿", "home_macro_stance_value", "Äá»¨NG", "#f2f2f2"),
+                    ("Tư thế", "home_macro_stance_value", "ĐỨNG", "#f2f2f2"),
                     ("ADS", "home_macro_ads_value", "HOLD", "#66ffc2"),
-                    ("Cháº¿ Äá»™ Chá»¥p", "home_macro_capture_value", "DXGI", "#89d4ff"),
+                    ("Chế Độ Chụp", "home_macro_capture_value", "DXGI", "#89d4ff"),
                 ],
                 toggle_attr="home_macro_toggle_btn",
                 toggle_handler=getattr(owner, "toggle_home_macro", None),
@@ -555,8 +554,8 @@ class HomePanelBuilder:
                 title_color="#73f0ff",
                 rows=[
                     ("Model", "home_aim_model_value", "N/A", "#f2f2f2"),
-                    ("Backend", "home_aim_backend_value", "ChÆ°a náº¡p", "#f2f2f2"),
-                    ("Cháº¿ Äá»™ Chá»¥p", "home_aim_capture_value", "DirectX", "#89d4ff"),
+                    ("Backend", "home_aim_backend_value", "Chưa nạp", "#f2f2f2"),
+                    ("Chế Độ Chụp", "home_aim_capture_value", "DirectX", "#89d4ff"),
                 ],
                 toggle_attr="home_aim_toggle_btn",
                 toggle_handler=getattr(owner, "toggle_home_aim", None),
@@ -726,14 +725,14 @@ class HomePanelBuilder:
                 badge_text="\u2022 T\u1ea1m D\u1eebng",
                 badge_color="#ff7e7e",
                 badge_attr="home_metric_fps_badge",
-                helper_text="Khung hÃ¬nh thá»i gian thá»±c",
+                helper_text="Khung hình thời gian thực",
                 tone="#101612",
             ),
             1,
         )
         layout.addWidget(
             self._build_metric_card(
-                title="Äá»™ Trá»…",
+                title="Độ Trễ",
                 value_attr="home_metric_inf_value",
                 text="0",
                 color="#ffd7a1",
@@ -741,7 +740,7 @@ class HomePanelBuilder:
                 badge_text="\u2022 T\u1ea1m D\u1eebng",
                 badge_color="#ff7e7e",
                 badge_attr="home_metric_inf_badge",
-                helper_text="Äá»™ trá»… suy luáº­n hiá»‡n táº¡i",
+                helper_text="Độ trễ suy luận hiện tại",
                 tone="#17130f",
             ),
             1,
@@ -1163,14 +1162,14 @@ class AimPanelBuilder:
         layout = owner.aim_display_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_display", "Hiá»ƒn Thá»‹", owner.aim_display_box))
+        layout.addWidget(self._header("header_aim_display", "Hiển Thị", owner.aim_display_box))
 
         display_toggle_row = QHBoxLayout()
         display_toggle_row.setContentsMargins(0, 0, 0, 0)
         display_toggle_row.setSpacing(18)
 
-        owner.aim_chk_show_fov = QCheckBox("Hiá»ƒn Thá»‹ FOV")
-        owner.aim_chk_show_detect = QCheckBox("Hiá»ƒn Thá»‹ Khung Detect")
+        owner.aim_chk_show_fov = QCheckBox("Hiển Thị FOV")
+        owner.aim_chk_show_detect = QCheckBox("Hiển Thị Khung Detect")
 
         for checkbox in (owner.aim_chk_show_fov, owner.aim_chk_show_detect):
             checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1204,10 +1203,10 @@ class AimPanelBuilder:
     def _build_model_box(self):
         owner = self.owner
         owner.aim_model_box = self._group_box("aim_model_box", "AimModelBox")
-        owner.aim_model_box.setFixedHeight(82)
+        owner.aim_model_box.setFixedHeight(62)
         layout = owner.aim_model_box.content_layout()
-        layout.setContentsMargins(8, 18, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(8, 18, 8, 6)
+        layout.setSpacing(4)
         layout.addWidget(self._header("header_aim_model", "Model", owner.aim_model_box))
 
         owner.combo_aim_model = QComboBox()
@@ -1245,7 +1244,7 @@ class AimPanelBuilder:
         status_row_layout.setSpacing(6)
         owner.lbl_aim_model_title = QLabel("Models")
         owner.lbl_aim_model_sep = QLabel(":")
-        owner.lbl_aim_model_status = QLabel("ChÆ°a táº£i")
+        owner.lbl_aim_model_status = QLabel("Chưa tải")
         for widget in (owner.lbl_aim_model_title, owner.lbl_aim_model_sep, owner.lbl_aim_model_status):
             widget.setStyleSheet(
                 """
@@ -1261,7 +1260,7 @@ class AimPanelBuilder:
         status_row_layout.addStretch(1)
         layout.addWidget(owner.aim_model_status_row)
 
-        owner.lbl_aim_mode_info = QLabel("Cháº¿ Äá»™: TÄƒng Tá»‘c")
+        owner.lbl_aim_mode_info = QLabel("Chế Độ: Tăng Tốc")
         owner.lbl_aim_mode_info.setStyleSheet(
             """
             QLabel {
@@ -1275,7 +1274,7 @@ class AimPanelBuilder:
         )
         layout.addWidget(owner.lbl_aim_mode_info)
 
-        owner.lbl_aim_backend_info = QLabel("Backend: ChÆ°a náº¡p")
+        owner.lbl_aim_backend_info = QLabel("Backend: Chưa nạp")
         owner.lbl_aim_backend_info.setStyleSheet(
             """
             QLabel {
@@ -1297,8 +1296,8 @@ class AimPanelBuilder:
         meta_layout.setContentsMargins(2, 0, 2, 0)
         meta_layout.setSpacing(8)
 
-        owner.lbl_aim_model_status_meta = QLabel("Runtime: Native DLL chá»")
-        owner.lbl_aim_runtime_meta = QLabel("Backend: ChÆ°a náº¡p")
+        owner.lbl_aim_model_status_meta = QLabel("Runtime: Native DLL chờ")
+        owner.lbl_aim_runtime_meta = QLabel("Backend: Chưa nạp")
 
         for widget, color in (
             (owner.lbl_aim_model_status_meta, "#cfcfcf"),
@@ -1319,16 +1318,17 @@ class AimPanelBuilder:
             )
             meta_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
         meta_layout.addStretch(1)
+        owner.aim_model_meta_row.hide()
         layout.addWidget(owner.aim_model_meta_row)
 
     def _build_capture_box(self):
         owner = self.owner
         owner.aim_capture_box = self._group_box("aim_capture_box", "AimCaptureBox")
-        owner.aim_capture_box.setFixedHeight(82)
+        owner.aim_capture_box.setFixedHeight(62)
         layout = owner.aim_capture_box.content_layout()
-        layout.setContentsMargins(8, 18, 8, 8)
-        layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_capture", "PhÆ°Æ¡ng Thá»©c Chá»¥p", owner.aim_capture_box))
+        layout.setContentsMargins(8, 18, 8, 6)
+        layout.setSpacing(4)
+        layout.addWidget(self._header("header_aim_capture", "Phương Thức Chụp", owner.aim_capture_box))
 
         owner.combo_aim_capture = QComboBox()
         owner.combo_aim_capture.setFixedHeight(26)
@@ -1366,13 +1366,13 @@ class AimPanelBuilder:
         layout = owner.aim_shortcuts_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_shortcuts", "PhÃ­m Táº¯t", owner.aim_shortcuts_box))
+        layout.addWidget(self._header("header_aim_shortcuts", "Phím Tắt", owner.aim_shortcuts_box))
 
         layout.addLayout(
             self._create_button_row(
                 "aim_lbl_emergency_stop",
                 "aim_btn_emergency_stop",
-                "Báº­t/Táº¯t Aim",
+                "Bật/Tắt Aim",
                 "F8",
                 "aim_emergency_stop_key",
             )
@@ -1381,7 +1381,7 @@ class AimPanelBuilder:
             self._create_button_row(
                 "aim_lbl_primary",
                 "aim_btn_primary",
-                "PhÃ­m Aim",
+                "Phím Aim",
                 "RIGHT MOUSE",
                 "aim_primary_key",
             )
@@ -1390,7 +1390,7 @@ class AimPanelBuilder:
             self._create_button_row(
                 "aim_lbl_secondary",
                 "aim_btn_secondary",
-                "PhÃ­m Aim Phá»¥",
+                "Phím Aim Phụ",
                 "LEFT CTRL",
                 "aim_secondary_key",
             )
@@ -1399,7 +1399,7 @@ class AimPanelBuilder:
             self._create_button_row(
                 "aim_lbl_trigger",
                 "aim_btn_trigger",
-                "Báº­t/Táº¯t Trigger",
+                "Bật/Tắt Trigger",
                 "F7",
                 "aim_trigger_key",
             )
@@ -1411,14 +1411,14 @@ class AimPanelBuilder:
         layout = owner.aim_settings_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_settings", "CÃ i Äáº·t", owner.aim_settings_box))
+        layout.addWidget(self._header("header_aim_settings", "Cài Đặt", owner.aim_settings_box))
 
         for row in (
             self._create_slider_row(
                 "aim_lbl_fov",
                 "aim_slider_fov",
                 "aim_fov_value_label",
-                "VÃ¹ng FOV",
+                "Vùng FOV",
                 "300",
                 10,
                 640,
@@ -1430,7 +1430,7 @@ class AimPanelBuilder:
                 "aim_lbl_confidence",
                 "aim_slider_confidence",
                 "aim_confidence_value_label",
-                "NgÆ°á»¡ng Tin Cáº­y AI",
+                "Ngưỡng Tin Cậy AI",
                 "45%",
                 1,
                 100,
@@ -1442,7 +1442,7 @@ class AimPanelBuilder:
                 "aim_lbl_trigger_delay",
                 "aim_slider_trigger_delay",
                 "aim_trigger_delay_value_label",
-                "Äá»™ Trá»… Tá»± Báº¯n",
+                "Độ Trễ Tự Bắn",
                 "100 ms",
                 10,
                 1000,
@@ -1456,7 +1456,7 @@ class AimPanelBuilder:
                 "aim_lbl_capture_fps",
                 "aim_slider_capture_fps",
                 "aim_capture_fps_value_label",
-                "Tá»‘c Äá»™ Chá»¥p (FPS)",
+                "Tốc Độ Chụp (FPS)",
                 "144",
                 1,
                 240,
@@ -1467,7 +1467,7 @@ class AimPanelBuilder:
             self._create_combo_row(
                 "aim_lbl_target_priority",
                 "combo_aim_target_priority",
-                "Æ¯u TiÃªn",
+                "Ưu Tiên",
                 ("Body -> Head", "Head -> Body"),
                 "Body -> Head",
             ),
@@ -1480,14 +1480,14 @@ class AimPanelBuilder:
         layout = owner.aim_smoothing_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_smoothing", "Äá»™ Nháº¡y / Äá»™ MÆ°á»£t", owner.aim_smoothing_box))
+        layout.addWidget(self._header("header_aim_smoothing", "Độ Nhạy / Độ Mượt", owner.aim_smoothing_box))
 
         for row in (
             self._create_slider_row(
                 "aim_lbl_sensitivity",
                 "aim_slider_sensitivity",
                 "aim_sensitivity_value_label",
-                "Äá»™ Nháº¡y Chuá»™t",
+                "Độ Nhạy Chuột",
                 "0.80",
                 1,
                 100,
@@ -1498,7 +1498,7 @@ class AimPanelBuilder:
                 "aim_lbl_ema",
                 "aim_slider_ema",
                 "aim_ema_value_label",
-                "Äá»™ MÆ°á»£t",
+                "Độ Mượt",
                 "0.50",
                 1,
                 100,
@@ -1509,7 +1509,7 @@ class AimPanelBuilder:
                 "aim_lbl_jitter",
                 "aim_slider_jitter",
                 "aim_jitter_value_label",
-                "Äá»™ Rung Chuá»™t",
+                "Độ Rung Chuột",
                 "4",
                 0,
                 15,
@@ -1520,7 +1520,7 @@ class AimPanelBuilder:
                 "aim_lbl_primary_position",
                 "aim_slider_primary_position",
                 "aim_primary_position_value_label",
-                "Vá»‹ TrÃ­ Aim ChÃ­nh",
+                "Vị Trí Aim Chính",
                 "50",
                 0,
                 100,
@@ -1532,7 +1532,7 @@ class AimPanelBuilder:
                 "aim_lbl_secondary_position",
                 "aim_slider_secondary_position",
                 "aim_secondary_position_value_label",
-                "Vá»‹ TrÃ­ Aim Phá»¥",
+                "Vị Trí Aim Phụ",
                 "50",
                 0,
                 100,
@@ -1550,7 +1550,7 @@ class AimPanelBuilder:
         layout = owner.aim_listing_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_listing", "Danh SÃ¡ch Liá»‡t KÃª", owner.aim_listing_box))
+        layout.addWidget(self._header("header_aim_listing", "Danh Sách Liệt Kê", owner.aim_listing_box))
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1623,7 +1623,7 @@ class AimPanelBuilder:
         layout = owner.aim_advanced_box.content_layout()
         layout.setContentsMargins(8, 18, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._header("header_aim_advanced", "TÃ¹y Chá»n NÃ¢ng Cao", owner.aim_advanced_box))
+        layout.addWidget(self._header("header_aim_advanced", "Tùy Chọn Nâng Cao", owner.aim_advanced_box))
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1724,7 +1724,7 @@ class AimPanelBuilder:
                 f"aim_lbl_file_{key.replace(' ', '_').lower()}",
                 f"aim_btn_file_{key.replace(' ', '_').lower()}",
                 label,
-                "Chá»n DLL",
+                "Chọn DLL",
                 lambda _checked=False, file_key=key: owner.choose_aim_file_location(file_key),
             )
             content_layout.addLayout(row)
@@ -1792,34 +1792,34 @@ class AimPanelBuilder:
 
     def _advanced_toggle_specs(self):
         return [
-            ("Constant AI Tracking", "Tracking LiÃªn Tá»¥c"),
+            ("Constant AI Tracking", "Tracking Liên Tục"),
             ("Sticky Aim", "Sticky Aim"),
-            ("Predictions", "Dá»± ÄoÃ¡n"),
-            ("Enable Model Switch Keybind", "Báº­t PhÃ­m Äá»•i Model"),
+            ("Predictions", "Dự Đoán"),
+            ("Enable Model Switch Keybind", "Bật Phím Đổi Model"),
             ("FOV", "Logic FOV"),
-            ("Dynamic FOV", "FOV Äá»™ng"),
-            ("Third Person Support", "GÃ³c NhÃ¬n Thá»© 3"),
+            ("Dynamic FOV", "FOV Động"),
+            ("Third Person Support", "Góc Nhìn Thứ 3"),
             ("Masking", "Masking"),
             ("Cursor Check", "Cursor Check"),
             ("Spray Mode", "Spray Mode"),
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            ("Collect Data While Playing", "Thu Data Khi ChÆ¡i"),
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            ("Collect Data While Playing", "Thu Data Khi Chơi"),
             ("Auto Label Data", "Auto Label Data"),
             ("LG HUB Mouse Movement", "LG HUB Mouse"),
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             ("Debug Mode", "Debug Mode"),
-            ("UI TopMost", "UI LuÃ´n TrÃªn CÃ¹ng"),
+            ("UI TopMost", "UI Luôn Trên Cùng"),
             ("StreamGuard", "StreamGuard"),
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
         ]
 
     def _advanced_dropdown_specs(self):
         return [
             {
                 "key": "Prediction Method",
-                "label": "Kiá»ƒu Dá»± ÄoÃ¡n",
+                "label": "Kiểu Dự Đoán",
                 "label_attr": "aim_lbl_prediction_method",
                 "combo_attr": "combo_aim_prediction_method",
                 "default": "Kalman Filter",
@@ -1827,7 +1827,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Detection Area Type",
-                "label": "VÃ¹ng Detect",
+                "label": "Vùng Detect",
                 "label_attr": "aim_lbl_detection_area_type",
                 "combo_attr": "combo_aim_detection_area_type",
                 "default": "Closest to Center Screen",
@@ -1835,7 +1835,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Aiming Boundaries Alignment",
-                "label": "CÄƒn BiÃªn Aim",
+                "label": "Căn Biên Aim",
                 "label_attr": "aim_lbl_aiming_boundaries",
                 "combo_attr": "combo_aim_aiming_boundaries",
                 "default": "Center",
@@ -1843,7 +1843,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Mouse Movement Method",
-                "label": "Kiá»ƒu Di Chuá»™t",
+                "label": "Kiểu Di Chuột",
                 "label_attr": "aim_lbl_mouse_movement_method",
                 "combo_attr": "combo_aim_mouse_movement_method",
                 "default": "Mouse Event",
@@ -1851,7 +1851,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Tracer Position",
-                "label": "Vá»‹ TrÃ­ Tracer",
+                "label": "Vị Trí Tracer",
                 "label_attr": "aim_lbl_tracer_position",
                 "combo_attr": "combo_aim_tracer_position",
                 "default": "Bottom",
@@ -1859,7 +1859,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Movement Path",
-                "label": "ÄÆ°á»ng Aim",
+                "label": "Đường Aim",
                 "label_attr": "aim_lbl_movement_path",
                 "combo_attr": "combo_aim_movement_path",
                 "default": "Cubic Bezier",
@@ -1875,7 +1875,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Target Class",
-                "label": "Class Má»¥c TiÃªu",
+                "label": "Class Mục Tiêu",
                 "label_attr": "aim_lbl_target_class",
                 "combo_attr": "combo_aim_target_class",
                 "default": "Best Confidence",
@@ -1885,9 +1885,9 @@ class AimPanelBuilder:
 
     def _advanced_color_specs(self):
         return [
-            ("FOV Color", "MÃ u FOV", "#FF8080FF"),
-            ("Detected Player Color", "MÃ u ESP", "#FF00FFFF"),
-            ("Theme Color", "MÃ u Theme", "#FF722ED1"),
+            ("FOV Color", "Màu FOV", "#FF8080FF"),
+            ("Detected Player Color", "Màu ESP", "#FF00FFFF"),
+            ("Theme Color", "Màu Theme", "#FF722ED1"),
         ]
 
     def _advanced_file_specs(self):
@@ -1914,7 +1914,7 @@ class AimPanelBuilder:
         return [
             {
                 "key": "Dynamic FOV Size",
-                "label": "KÃ­ch ThÆ°á»›c FOV Äá»™ng",
+                "label": "Kích Thước FOV Động",
                 "label_attr": "aim_lbl_dynamic_fov",
                 "slider_attr": "aim_slider_dynamic_fov",
                 "value_attr": "aim_dynamic_fov_value_label",
@@ -1929,7 +1929,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Sticky Aim Threshold",
-                "label": "NgÆ°á»¡ng BÃ¡m Má»¥c TiÃªu",
+                "label": "Ngưỡng Bám Mục Tiêu",
                 "label_attr": "aim_lbl_sticky_threshold",
                 "slider_attr": "aim_slider_sticky_threshold",
                 "value_attr": "aim_sticky_threshold_value_label",
@@ -1943,7 +1943,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Y Offset (Up/Down)",
-                "label": "Lá»‡ch Y",
+                "label": "Lệch Y",
                 "label_attr": "aim_lbl_y_offset",
                 "slider_attr": "aim_slider_y_offset",
                 "value_attr": "aim_y_offset_value_label",
@@ -1957,7 +1957,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Y Offset (%)",
-                "label": "Lá»‡ch Y %",
+                "label": "Lệch Y %",
                 "label_attr": "aim_lbl_y_offset_percent",
                 "slider_attr": "aim_slider_y_offset_percent",
                 "value_attr": "aim_y_offset_percent_value_label",
@@ -1971,7 +1971,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "X Offset (Left/Right)",
-                "label": "Lá»‡ch X",
+                "label": "Lệch X",
                 "label_attr": "aim_lbl_x_offset",
                 "slider_attr": "aim_slider_x_offset",
                 "value_attr": "aim_x_offset_value_label",
@@ -1985,7 +1985,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "X Offset (%)",
-                "label": "Lá»‡ch X %",
+                "label": "Lệch X %",
                 "label_attr": "aim_lbl_x_offset_percent",
                 "slider_attr": "aim_slider_x_offset_percent",
                 "value_attr": "aim_x_offset_percent_value_label",
@@ -2055,7 +2055,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Corner Radius",
-                "label": "Bo GÃ³c ESP",
+                "label": "Bo Góc ESP",
                 "label_attr": "aim_lbl_corner_radius",
                 "slider_attr": "aim_slider_corner_radius",
                 "value_attr": "aim_corner_radius_value_label",
@@ -2069,7 +2069,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Border Thickness",
-                "label": "DÃ y Viá»n",
+                "label": "Dày Viền",
                 "label_attr": "aim_lbl_border_thickness",
                 "slider_attr": "aim_slider_border_thickness",
                 "value_attr": "aim_border_thickness_value_label",
@@ -2083,7 +2083,7 @@ class AimPanelBuilder:
             },
             {
                 "key": "Opacity",
-                "label": "Äá»™ Trong",
+                "label": "Độ Trong",
                 "label_attr": "aim_lbl_opacity",
                 "slider_attr": "aim_slider_opacity",
                 "value_attr": "aim_opacity_value_label",
@@ -2499,7 +2499,7 @@ class CrosshairOverlay(QWidget):
         self.setGeometry(0, 0, w, h)
 
         self.active = False
-        self.style = "10: X-Shape"
+        self.style = "x"
         self.color = QColor(255, 255, 255)
         self.ads_mode = "HOLD"
         self.ads_active = False
@@ -2560,23 +2560,23 @@ class CrosshairOverlay(QWidget):
         self.update()
 
     def set_style(self, style):
-        self.style = str(style or "10: X-Shape")
+        self.style = str(style or "x")
         self.update()
 
     def set_color(self, color_name):
         colors = {
-            "Äá»": QColor(255, 30, 30),
-            "Äá» Cam": QColor(255, 69, 0),
+            "Đỏ": QColor(255, 30, 30),
+            "Đỏ Cam": QColor(255, 69, 0),
             "Cam": QColor(255, 140, 0),
-            "VÃ ng": QColor(255, 255, 0),
-            "Xanh LÃ¡": QColor(0, 255, 0),
-            "Xanh Ngá»c": QColor(0, 255, 255),
-            "Xanh DÆ°Æ¡ng": QColor(0, 180, 255),
-            "TÃ­m": QColor(180, 0, 255),
-            "TÃ­m Há»“ng": QColor(255, 60, 255),
-            "Há»“ng": QColor(255, 105, 180),
-            "Tráº¯ng": QColor(255, 255, 255),
-            "Báº¡c": QColor(192, 192, 192),
+            "Vàng": QColor(255, 255, 0),
+            "Xanh Lá": QColor(0, 255, 0),
+            "Xanh Ngọc": QColor(0, 255, 255),
+            "Xanh Dương": QColor(0, 180, 255),
+            "Tím": QColor(180, 0, 255),
+            "Tím Hồng": QColor(255, 60, 255),
+            "Hồng": QColor(255, 105, 180),
+            "Trắng": QColor(255, 255, 255),
+            "Bạc": QColor(192, 192, 192),
         }
         self.color = colors.get(str(color_name), QColor(255, 255, 255))
         self.update()
@@ -2590,17 +2590,56 @@ class CrosshairOverlay(QWidget):
         cy = self.height() // 2
 
         def draw_shape(p):
-            if self.style == "10: X-Shape":
-                l = 6
-                gap = 3
-                p.drawLine(cx - gap - l, cy - gap - l, cx - gap, cy - gap)
-                p.drawLine(cx + gap + l, cy + gap + l, cx + gap, cy + gap)
-                p.drawLine(cx - gap - l, cy + gap + l, cx - gap, cy + gap)
-                p.drawLine(cx + gap + l, cy - gap - l, cx + gap, cy - gap)
-            elif self.style == "6: Micro Dot":
+            if self.style == "dot":
                 p.drawEllipse(QPoint(cx, cy), 2, 2)
-            elif self.style == "14: Square Dot":
-                p.drawRect(cx - 2, cy - 2, 4, 4)
+            elif self.style == "plus":
+                p.drawLine(cx - 6, cy, cx + 6, cy)
+                p.drawLine(cx, cy - 6, cx, cy + 6)
+            elif self.style == "x":
+                p.drawLine(cx - 6, cy - 6, cx + 6, cy + 6)
+                p.drawLine(cx - 6, cy + 6, cx + 6, cy - 6)
+            elif self.style == "circle":
+                p.drawEllipse(QPoint(cx, cy), 6, 6)
+                p.drawEllipse(QPoint(cx, cy), 1, 1)
+            elif self.style == "hollow_circle":
+                p.drawEllipse(QPoint(cx, cy), 6, 6)
+            elif self.style == "tactical":
+                gap = 4
+                p.drawLine(cx - 10, cy, cx - gap, cy)
+                p.drawLine(cx + gap, cy, cx + 10, cy)
+                p.drawLine(cx, cy - 10, cx, cy - gap)
+                p.drawLine(cx, cy + gap, cx, cy + 10)
+                p.drawEllipse(QPoint(cx, cy), 1, 1)
+            elif self.style == "small_cross":
+                gap = 3
+                p.drawLine(cx - 6, cy, cx - gap, cy)
+                p.drawLine(cx + gap, cy, cx + 6, cy)
+                p.drawLine(cx, cy - 6, cx, cy - gap)
+                p.drawLine(cx, cy + gap, cx, cy + 6)
+            elif self.style == "thick_cross":
+                p.drawLine(cx - 8, cy, cx + 8, cy)
+                p.drawLine(cx, cy - 8, cx, cy + 8)
+            elif self.style == "sniper":
+                gap = 5
+                p.drawLine(cx - 12, cy, cx - gap, cy)
+                p.drawLine(cx + gap, cy, cx + 12, cy)
+                p.drawLine(cx, cy - 12, cx, cy - gap)
+                p.drawLine(cx, cy + gap, cx, cy + 12)
+                p.drawEllipse(QPoint(cx, cy), 9, 9)
+            elif self.style == "diamond":
+                p.drawLine(cx, cy - 6, cx + 6, cy)
+                p.drawLine(cx + 6, cy, cx, cy + 6)
+                p.drawLine(cx, cy + 6, cx - 6, cy)
+                p.drawLine(cx - 6, cy, cx, cy - 6)
+            elif self.style == "triangle":
+                p.drawLine(cx, cy - 7, cx - 6, cy + 4)
+                p.drawLine(cx - 6, cy + 4, cx + 6, cy + 4)
+                p.drawLine(cx + 6, cy + 4, cx, cy - 7)
+            elif self.style == "minimal":
+                p.drawLine(cx - 4, cy, cx - 1, cy)
+                p.drawLine(cx + 1, cy, cx + 4, cy)
+                p.drawLine(cx, cy - 4, cx, cy - 1)
+                p.drawLine(cx, cy + 1, cx, cy + 4)
             else:
                 gap = 4
                 l = 8
@@ -2613,7 +2652,7 @@ class CrosshairOverlay(QWidget):
         pen_outline.setWidth(4)
         pen_outline.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen_outline)
-        if self.style in {"6: Micro Dot", "14: Square Dot"}:
+        if self.style == "dot":
             painter.setBrush(QBrush(QColor(0, 0, 0, 255)))
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -2623,7 +2662,7 @@ class CrosshairOverlay(QWidget):
         pen_core.setWidth(2)
         pen_core.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen_core)
-        if self.style in {"6: Micro Dot", "14: Square Dot"}:
+        if self.style == "dot":
             painter.setBrush(QBrush(self.color))
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -2702,9 +2741,9 @@ class GameOverlay(QWidget):
     def update_status(self, gun_name, scope, stance, grip="NONE", muzzle="NONE", is_paused=False, is_firing=False, ai_status="HIBERNATE"):
         self.is_firing = bool(is_firing)
         if is_paused:
-            text, color = "Táº M Dá»ªNG", "#FF0000"
+            text, color = "TẠM DỪNG", "#FF0000"
         elif gun_name == "NONE":
-            text, color = "CHÆ¯A CÃ“ SÃšNG", "#FFFF00"
+            text, color = "CHƯA CÓ SÚNG", "#FFFF00"
         else:
             scope_raw = str(scope).lower()
             sc_val = "X1"
@@ -2725,17 +2764,17 @@ class GameOverlay(QWidget):
 
             vn_stance = str(stance)
             if "STAND" in vn_stance.upper():
-                vn_stance = "Äá»¨NG"
+                vn_stance = "ĐỨNG"
             elif "CROUCH" in vn_stance.upper():
-                vn_stance = "NGá»’I"
+                vn_stance = "NGỒI"
             elif "PRONE" in vn_stance.upper():
-                vn_stance = "Náº°M"
+                vn_stance = "NẰM"
 
             parts = [str(gun_name).upper(), sc_val]
             if str(grip).upper() != "NONE":
                 parts.append("TAY")
             if str(muzzle).upper() != "NONE":
-                parts.append("NÃ’NG")
+                parts.append("NÒNG")
             parts.append(vn_stance)
             text = " | ".join(parts)
             color = "#00FF00"
@@ -2772,6 +2811,10 @@ class GameOverlay(QWidget):
 class MacroWindow(QMainWindow):
     signal_settings_changed = pyqtSignal() # Signal to notify Backend/InputBridge of config changes
     WINDOW_WIDTH = 930
+    _MOJIBAKE_MARKER_CODES = (0x00C3, 0x00C2, 0x00C4, 0x00C5, 0x00C6, 0x2022)
+    _CP1252_REVERSE = {
+        ch: i for i, ch in enumerate(encodings.cp1252.decoding_table)
+    }
 
     def __init__(self):
         super().__init__()
@@ -2787,7 +2830,8 @@ class MacroWindow(QMainWindow):
         w = win32api.GetSystemMetrics(0)
         h = win32api.GetSystemMetrics(1)
         self.detected_resolution = f"{w}x{h}"
-        ResolutionNoticeDialog(self.detected_resolution, self).exec()
+        self._resolution_notice_dialog = ResolutionNoticeDialog(self.detected_resolution, self)
+        self._resolution_notice_dialog.open()
         
         # 2. Logic Components (Connected via set_backend)
         self.backend = None
@@ -2835,6 +2879,7 @@ class MacroWindow(QMainWindow):
         # 5. UI Setup
         self.load_style()
         self.setup_ui_v2()
+        self.sanitize_runtime_vietnamese_text()
         
         # 6. Tray Manager (Step 6)
         self.tray_manager = TrayManager(self)
@@ -2856,49 +2901,78 @@ class MacroWindow(QMainWindow):
         widget.style().unpolish(widget)
         widget.style().polish(widget)
 
-    def log_startup_debug_info(self):
-        if getattr(self, "_startup_font_debug_logged", False):
-            return
-        self._startup_font_debug_logged = True
+    def _repair_mojibake_text(self, text: str) -> str:
+        if not text or not any(chr(code) in text for code in self._MOJIBAKE_MARKER_CODES):
+            return text
 
-        app = QApplication.instance()
-        app_font = app.font() if app is not None else self.font()
-        window_font = self.font()
-
-        print(
-            f"[FONT DEBUG] QApplication font family={app_font.family()} point_size={app_font.pointSize()}"
-        )
-        print(
-            f"[FONT DEBUG] MacroWindow font family={window_font.family()} point_size={window_font.pointSize()}"
-        )
-
-        for attr_name in (
-            "app_title_label",
-            "page_banner_title",
-            "btn_default_main",
-            "btn_save_main",
-            "lbl_stance",
-            "lbl_ads_status",
-        ):
-            widget = getattr(self, attr_name, None)
-            if widget is None:
+        raw_bytes = bytearray()
+        for ch in text:
+            code = ord(ch)
+            if code <= 255:
+                raw_bytes.append(code)
                 continue
-            font = widget.font()
-            text_getter = getattr(widget, "text", None)
-            text_value = text_getter() if callable(text_getter) else ""
-            print(
-                f"[FONT DEBUG] {attr_name} font family={font.family()} point_size={font.pointSize()} text={text_value}"
-            )
 
-        print(f"[FONT DEBUG] python_default_encoding={sys.getdefaultencoding()}")
-        print(f"[FONT DEBUG] python_filesystem_encoding={sys.getfilesystemencoding()}")
-        print(
-            "[FONT DEBUG] system_locale="
-            f"{locale.setlocale(locale.LC_CTYPE, None)} preferred_encoding={locale.getpreferredencoding(False)}"
-        )
-        print(
-            "[FONT TEST] Tiếng Việt: Trạng thái | Cài Đặt Gốc | Lưu Cài Đặt | Tâm Ngắm | Độ Trễ"
-        )
+            mapped = self._CP1252_REVERSE.get(ch)
+            if mapped is None:
+                return text
+            raw_bytes.append(mapped)
+
+        try:
+            fixed = bytes(raw_bytes).decode("utf-8")
+        except UnicodeDecodeError:
+            return text
+
+        return fixed if fixed != text else text
+
+    def sanitize_runtime_vietnamese_text(self):
+        # Vá text mojibake còn sót từ builder GUI cũ mà không đổi layout hay logic.
+        title = self.windowTitle()
+        if title:
+            self.setWindowTitle(self._repair_mojibake_text(title))
+
+        for widget in self.findChildren(QWidget):
+            text_getter = getattr(widget, "text", None)
+            text_setter = getattr(widget, "setText", None)
+            if callable(text_getter) and callable(text_setter):
+                original = text_getter()
+                if isinstance(original, str):
+                    fixed = self._repair_mojibake_text(original)
+                    if fixed != original:
+                        text_setter(fixed)
+
+            if isinstance(widget, QComboBox):
+                for index in range(widget.count()):
+                    original = widget.itemText(index)
+                    fixed = self._repair_mojibake_text(original)
+                    if fixed != original:
+                        widget.setItemText(index, fixed)
+
+    def normalize_crosshair_style_value(self, style: str) -> str:
+        style_text = str(style or "").strip()
+        legacy_map = {
+            "1: Gap Cross": "small_cross",
+            "2: T-Shape": "tactical",
+            "3: Circle Dot": "circle",
+            "5: Classic": "plus",
+            "6: Micro Dot": "dot",
+            "7: Hollow Box": "hollow_circle",
+            "8: Cross + Dot": "tactical",
+            "9: Chevron": "triangle",
+            "10: X-Shape": "x",
+            "11: Diamond": "diamond",
+            "13: Triangle": "triangle",
+            "14: Square Dot": "dot",
+            "17: Bracket Dot": "minimal",
+            "18: Shuriken": "tactical",
+            "19: Center Gap": "minimal",
+            "22: Plus Dot": "plus",
+            "23: V-Shape": "triangle",
+            "24: Star": "sniper",
+        }
+        valid_styles = {internal for _, internal in self.crosshair_style_options}
+        if style_text in valid_styles:
+            return style_text
+        return legacy_map.get(style_text, "x")
 
     def style_setting_label(self, widget: QLabel):
         widget.setStyleSheet("""
@@ -3345,9 +3419,9 @@ class MacroWindow(QMainWindow):
         banner_map = {
             "home": {
                 "eyebrow": "DI88 CONTROL",
-                "title": "TRUNG TÃ‚M ÄIá»€U KHIá»‚N",
+                "title": "TRUNG TÂM ĐIỀU KHIỂN",
                 "subtitle": "Macro & Aim By Di88",
-                "badge": "Tá»”NG Há»¢P",
+                "badge": "TỔNG HỢP",
                 "gradient_start": "#0d1e33",
                 "gradient_end": "#112944",
                 "hover_start": "#123053",
@@ -3364,9 +3438,9 @@ class MacroWindow(QMainWindow):
             },
             "macro": {
                 "eyebrow": "DI88 MACRO",
-                "title": "TRUNG TÃ‚M MACRO",
-                "subtitle": "Nháº­n diá»‡n sÃºng, ADS vÃ  Ä‘iá»u khiá»ƒn recoil",
-                "badge": "â€¢ ÄANG Báº¬T" if macro_on else "â€¢ ÄANG Táº®T",
+                "title": "TRUNG TÂM MACRO",
+                "subtitle": "Nhận diện súng, ADS và điều khiển recoil",
+                "badge": "• ĐANG BẬT" if macro_on else "• ĐANG TẮT",
                 "gradient_start": "#251112",
                 "gradient_end": "#34181a",
                 "hover_start": "#341618",
@@ -3383,9 +3457,9 @@ class MacroWindow(QMainWindow):
             },
             "aim": {
                 "eyebrow": "DI88 AIM",
-                "title": "TRUNG TÃ‚M AIM",
-                "subtitle": "Theo dÃµi má»¥c tiÃªu vÃ  Ä‘iá»u khiá»ƒn ngáº¯m",
-                "badge": "â€¢ ÄANG Báº¬T" if aim_on else "â€¢ ÄANG Táº®T",
+                "title": "TRUNG TÂM AIM",
+                "subtitle": "Theo dõi mục tiêu và điều khiển ngắm",
+                "badge": "• ĐANG BẬT" if aim_on else "• ĐANG TẮT",
                 "gradient_start": "#0d2417",
                 "gradient_end": "#143121",
                 "hover_start": "#12311f",
@@ -3535,7 +3609,7 @@ class MacroWindow(QMainWindow):
         if badge_label is None:
             return
         if is_on:
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             badge_label.setStyleSheet(
                 f"""
                 QLabel {{
@@ -3548,7 +3622,7 @@ class MacroWindow(QMainWindow):
                 """
             )
         else:
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             badge_label.setStyleSheet(
                 """
                 QLabel {
@@ -3618,14 +3692,14 @@ class MacroWindow(QMainWindow):
                 self.home_metric_macro_value.setText(macro_text)
             self.home_metric_macro_value.setStyleSheet(f"QLabel {{ color: {macro_color}; font-size: 14px; font-weight: 900; background: transparent; border: none; }}")
         if hasattr(self, "home_metric_macro_value_hint"):
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             self.home_metric_macro_value_hint.setVisible(macro_text == "ON")
         if hasattr(self, "home_metric_aim_value"):
             if self.home_metric_aim_value.text() != aim_text:
                 self.home_metric_aim_value.setText(aim_text)
             self.home_metric_aim_value.setStyleSheet(f"QLabel {{ color: {aim_color}; font-size: 14px; font-weight: 900; background: transparent; border: none; }}")
         if hasattr(self, "home_metric_aim_value_hint"):
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             self.home_metric_aim_value_hint.setVisible(aim_text == "ON")
         if hasattr(self, "home_metric_fps_value"):
             if self.home_metric_fps_value.text() != fps_text:
@@ -3652,7 +3726,7 @@ class MacroWindow(QMainWindow):
         if hasattr(self, "home_aim_toggle_btn"):
             self._update_home_toggle_button_style(self.home_aim_toggle_btn, aim_text == "ON", "#73f0ff")
 
-        stance_text = "Äá»¨NG"
+        stance_text = "ĐỨNG"
         if hasattr(self, "lbl_stance") and self.lbl_stance:
             stance_text = self.lbl_stance.text().split(":")[-1].strip() or stance_text
         ads_text = "HOLD"
@@ -3663,7 +3737,7 @@ class MacroWindow(QMainWindow):
         if hasattr(self, "combo_aim_model") and self.combo_aim_model and self.combo_aim_model.count():
             model_text = self.combo_aim_model.currentText().strip() or model_text
         aim_capture_text = getattr(self, "current_aim_capture_mode", "DirectX")
-        backend_text = "ChÆ°a náº¡p"
+        backend_text = "Chưa nạp"
         runtime_source = ""
         if hasattr(self, "last_data") and isinstance(self.last_data, dict):
             aim_runtime_state = self.last_data.get("aim", {})
@@ -3714,25 +3788,25 @@ class MacroWindow(QMainWindow):
     def _format_aim_runtime_source_text(self, runtime_source: str) -> str:
         text = str(runtime_source or "").strip()
         normalized = text.lower()
-        if "error" in normalized or "lá»—i" in normalized:
-            return "Runtime: Native DLL lá»—i"
-        if "not ready" in normalized or "chÆ°a" in normalized:
-            return "Runtime: Native DLL chá»"
+        if "error" in normalized or "lỗi" in normalized:
+            return "Runtime: Native DLL lỗi"
+        if "not ready" in normalized or "chưa" in normalized:
+            return "Runtime: Native DLL chờ"
         if "native" in normalized:
             return "Runtime: Native DLL"
-        return "Runtime: ChÆ°a náº¡p"
+        return "Runtime: Chưa nạp"
 
     def _normalize_aim_backend_text(self, backend_text: str) -> str:
-        text = str(backend_text or "").strip() or "ChÆ°a náº¡p"
+        text = str(backend_text or "").strip() or "Chưa nạp"
         if text.lower() in {"not loaded", "booting", "idle"}:
-            return "ChÆ°a náº¡p"
+            return "Chưa nạp"
         for prefix in ("Native DLL /", "Native "):
             if text.lower().startswith(prefix.lower()):
                 text = text[len(prefix):].strip()
                 break
         if text.lower() in {"not ready", "none", "n/a"}:
-            return "ChÆ°a náº¡p"
-        return text.upper() if text != "ChÆ°a náº¡p" else text
+            return "Chưa nạp"
+        return text.upper() if text != "Chưa nạp" else text
 
     def _format_aim_backend_meta_text(self, backend_text: str, runtime_source: str = "") -> str:
         return f"Backend: {self._normalize_aim_backend_text(backend_text)}"
@@ -3740,15 +3814,15 @@ class MacroWindow(QMainWindow):
     def _format_home_aim_backend_text(self, backend_text: str, runtime_source: str = "") -> str:
         runtime = self._format_aim_runtime_source_text(runtime_source).replace("Runtime:", "").strip()
         backend = self._normalize_aim_backend_text(backend_text)
-        if runtime and runtime != "ChÆ°a náº¡p":
+        if runtime and runtime != "Chưa nạp":
             return f"{runtime} / {backend}"
         return backend
 
     def set_aim_model_status(self, text: str, color: str = "#cfcfcf"):
         normalized = {
-            "KhÃ´ng cÃ³ model": "\u004b\u0068\u00f4\u006e\u0067 \u0063\u00f3 \u006d\u006f\u0064\u0065\u006c",
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            "Không có model": "\u004b\u0068\u00f4\u006e\u0067 \u0063\u00f3 \u006d\u006f\u0064\u0065\u006c",
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
         }.get(text, text)
         if normalized == "\u0110\u00e3 \u0074\u1ea3\u0069":
             normalized = "\u0110\u00e3 \u004e\u1ea1\u0070"
@@ -3795,7 +3869,7 @@ class MacroWindow(QMainWindow):
                 }}
             """)
         if hasattr(self, "lbl_aim_runtime_meta") and self.lbl_aim_runtime_meta:
-            backend_text = "ChÆ°a náº¡p"
+            backend_text = "Chưa nạp"
             runtime_source = ""
             if hasattr(self, "last_data") and isinstance(self.last_data, dict):
                 runtime_source = str(self.last_data.get("aim", {}).get("runtime_source", "") or "")
@@ -3823,13 +3897,13 @@ class MacroWindow(QMainWindow):
         if not hasattr(self, "aim_model_notice") or self.aim_model_notice is None:
             return
         model_name = (model_name or "").strip()
-        if model_name == "KhÃ´ng cÃ³ model":
+        if model_name == "Không có model":
             return
-        if not model_name or model_name in ("KhÃ´ng cÃ³ model", "Khong co model"):
+        if not model_name or model_name in ("Không có model", "Khong co model"):
             return
         fg = "#ffb3b3" if error else "#f4f4f4"
         border = "#7a3a3a" if error else "#545454"
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         self.aim_model_notice.setText(
             f"\u004c\u1ed7\u0069 \u006e\u1ea1\u0070 \u006d\u006f\u0064\u0065\u006c: {model_name}"
             if error
@@ -3858,8 +3932,8 @@ class MacroWindow(QMainWindow):
             return
         text = self.combo_aim_model.currentText().strip()
         if not text or text in (
-            "KhÃ´ng cÃ³ model",
-            "KhÃ´ng cÃ³ model",
+            "Không có model",
+            "Không có model",
             "\u004b\u0068\u00f4\u006e\u0067 \u0063\u00f3 \u006d\u006f\u0064\u0065\u006c",
         ):
             self.set_aim_model_status("\u004b\u0068\u00f4\u006e\u0067 \u0063\u00f3 \u006d\u006f\u0064\u0065\u006c", "#ff9c9c")
@@ -3988,7 +4062,7 @@ class MacroWindow(QMainWindow):
         button = getattr(self, "aim_color_controls", {}).get(key)
         current_value = button.property("color_value") if button is not None else "#FFFFFFFF"
         initial = self._qcolor_from_argb_hex(str(current_value or "#FFFFFFFF"))
-        chosen = QColorDialog.getColor(initial, self, f"Chá»n {key}", QColorDialog.ColorDialogOption.ShowAlphaChannel)
+        chosen = QColorDialog.getColor(initial, self, f"Chọn {key}", QColorDialog.ColorDialogOption.ShowAlphaChannel)
         if not chosen.isValid():
             return
         value = f"#{chosen.alpha():02X}{chosen.red():02X}{chosen.green():02X}{chosen.blue():02X}"
@@ -4015,7 +4089,7 @@ class MacroWindow(QMainWindow):
         button = getattr(self, "aim_file_controls", {}).get(key)
         current = str(button.property("file_value") or "") if button is not None else ""
         start_dir = str(Path(current).parent) if current else str(Path.home())
-        file_path, _ = QFileDialog.getOpenFileName(self, f"Chá»n {key}", start_dir, "DLL Files (*.dll);;All Files (*.*)")
+        file_path, _ = QFileDialog.getOpenFileName(self, f"Chọn {key}", start_dir, "DLL Files (*.dll);;All Files (*.*)")
         if not file_path:
             return
         self.set_aim_file_button(key, file_path)
@@ -4027,7 +4101,7 @@ class MacroWindow(QMainWindow):
             return
         text = str(value or "").strip()
         button.setProperty("file_value", text)
-        button.setText(Path(text).name if text else "Chá»n DLL")
+        button.setText(Path(text).name if text else "Chọn DLL")
 
     def load_aim_file_controls(self, aim_file_locations: dict):
         for key, button in getattr(self, "aim_file_controls", {}).items():
@@ -4060,9 +4134,9 @@ class MacroWindow(QMainWindow):
         self.combo_aim_model.clear()
 
         if not models:
-            self.combo_aim_model.addItem("KhÃ´ng cÃ³ model")
+            self.combo_aim_model.addItem("Không có model")
             self.combo_aim_model.setEnabled(False)
-            self.set_aim_model_status("KhÃ´ng cÃ³ model", "#ff9c9c")
+            self.set_aim_model_status("Không có model", "#ff9c9c")
             self.combo_aim_model.blockSignals(False)
             return
 
@@ -4072,25 +4146,25 @@ class MacroWindow(QMainWindow):
         target_model = selected_model if selected_model in models else models[0]
         self.combo_aim_model.setCurrentText(target_model)
         self.combo_aim_model.blockSignals(False)
-        self.set_aim_model_status("ÄÃ£ táº£i", "#74ffc8")
+        self.set_aim_model_status("Đã tải", "#74ffc8")
 
     def on_aim_model_changed(self, index: int):
         if index < 0 or not hasattr(self, "combo_aim_model"):
             return
         text = self.combo_aim_model.currentText().strip()
-        if not text or text == "KhÃ´ng cÃ³ model":
-            self.set_aim_model_status("KhÃ´ng cÃ³ model", "#ff9c9c")
+        if not text or text == "Không có model":
+            self.set_aim_model_status("Không có model", "#ff9c9c")
         else:
-            self.set_aim_model_status("ÄÃ£ táº£i", "#74ffc8")
+            self.set_aim_model_status("Đã tải", "#74ffc8")
 
     def on_aim_model_changed(self, index: int):
         if index < 0 or not hasattr(self, "combo_aim_model"):
             return
         text = self.combo_aim_model.currentText().strip()
-        if not text or text in ("KhÃ´ng cÃ³ model", "Khong co model"):
-            self.set_aim_model_status("KhÃ´ng cÃ³ model", "#ff9c9c")
+        if not text or text in ("Không có model", "Khong co model"):
+            self.set_aim_model_status("Không có model", "#ff9c9c")
         else:
-            self.set_aim_model_status("ÄÃ£ táº£i", "#74ffc8")
+            self.set_aim_model_status("Đã tải", "#74ffc8")
             self.show_aim_model_notice(text)
 
     def update_scope_intensity_label(self, scope_key: str, value: int):
@@ -4170,21 +4244,21 @@ class MacroWindow(QMainWindow):
 
     def build_aim_test_slider_specs(self):
         return [
-            {"key": "Dynamic FOV Size", "label": "FOV Äá»™ng", "min": 10, "max": 640, "step": 1, "scale": 1, "default": 200, "format": "int"},
-            {"key": "Mouse Sensitivity (+/-)", "label": "Äá»™ Nháº¡y Chuá»™t", "min": 1, "max": 100, "step": 1, "scale": 100, "default": 0.80, "format": "float2"},
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            {"key": "Dynamic FOV Size", "label": "FOV Động", "min": 10, "max": 640, "step": 1, "scale": 1, "default": 200, "format": "int"},
+            {"key": "Mouse Sensitivity (+/-)", "label": "Độ Nhạy Chuột", "min": 1, "max": 100, "step": 1, "scale": 100, "default": 0.80, "format": "float2"},
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
+            # Đã làm sạch chú thích lỗi mã hóa.
             {"key": "EMA Smoothening", "label": "EMA Smooth", "min": 1, "max": 100, "step": 1, "scale": 100, "default": 0.5, "format": "float2"},
             {"key": "Kalman Lead Time", "label": "Kalman Lead", "min": 2, "max": 30, "step": 1, "scale": 100, "default": 0.10, "format": "float2"},
             {"key": "WiseTheFox Lead Time", "label": "Wise Lead", "min": 2, "max": 30, "step": 1, "scale": 100, "default": 0.15, "format": "float2"},
             {"key": "Shalloe Lead Multiplier", "label": "Shalloe Lead", "min": 2, "max": 20, "step": 1, "scale": 2, "default": 3.0, "format": "float1"},
             {"key": "AI Confidence Font Size", "label": "Font Detect", "min": 1, "max": 30, "step": 1, "scale": 1, "default": 20, "format": "int"},
-            {"key": "Corner Radius", "label": "Bo GÃ³c", "min": 0, "max": 100, "step": 1, "scale": 1, "default": 0, "format": "int"},
-            {"key": "Border Thickness", "label": "Äá»™ DÃ y Viá»n", "min": 1, "max": 100, "step": 1, "scale": 10, "default": 1.0, "format": "float1"},
-            {"key": "Opacity", "label": "Äá»™ Trong", "min": 0, "max": 10, "step": 1, "scale": 10, "default": 1.0, "format": "float1"},
+            {"key": "Corner Radius", "label": "Bo Góc", "min": 0, "max": 100, "step": 1, "scale": 1, "default": 0, "format": "int"},
+            {"key": "Border Thickness", "label": "Độ Dày Viền", "min": 1, "max": 100, "step": 1, "scale": 10, "default": 1.0, "format": "float1"},
+            {"key": "Opacity", "label": "Độ Trong", "min": 0, "max": 10, "step": 1, "scale": 10, "default": 1.0, "format": "float1"},
         ]
 
     def aim_test_slider_to_value(self, spec: dict, slider_value: int):
@@ -4261,25 +4335,25 @@ class MacroWindow(QMainWindow):
 
         self.hover_hint_targets = {}
         if hasattr(self, 'header_detection'):
-            self._add_hover_widget(self.header_detection, "ThÃ´ng tin vÅ© khÃ­ hiá»‡n táº¡i.")
+            self._add_hover_widget(self.header_detection, "Thông tin vũ khí hiện tại.")
         if hasattr(self, 'header_settings'):
-            self._add_hover_widget(self.header_settings, "Thiáº¿t láº­p cÃ¡c phÃ­m chá»©c nÄƒng, cháº¿ Ä‘á»™ chá»¥p vÃ  cÃ¡c tÃ¹y chá»n macro cÆ¡ báº£n.")
+            self._add_hover_widget(self.header_settings, "Thiết lập các phím chức năng, chế độ chụp và các tùy chọn macro cơ bản.")
         if hasattr(self, 'header_crosshair'):
-            self._add_hover_widget(self.header_crosshair, "Thiáº¿t láº­p tÃ¢m ngáº¯m, kiá»ƒu hiá»ƒn thá»‹ vÃ  mÃ u hiá»ƒn thá»‹.")
+            self._add_hover_widget(self.header_crosshair, "Thiết lập tâm ngắm, kiểu hiển thị và màu hiển thị.")
         if hasattr(self, 'lbl_fastloot_row'):
-            self._add_hover_widget(self.lbl_fastloot_row, "TÃ­nh nÄƒng nháº·t Ä‘á»“ nhanh.")
+            self._add_hover_widget(self.lbl_fastloot_row, "Tính năng nhặt đồ nhanh.")
         if hasattr(self, 'lbl_slide_row'):
-            self._add_hover_widget(self.lbl_slide_row, "Giá»¯ Shift + W + ( A hoáº·c D ) rá»“i báº¥m C Ä‘á»ƒ thá»±c hiá»‡n thao tÃ¡c lÆ°á»›t ngá»“i.")
+            self._add_hover_widget(self.lbl_slide_row, "Giữ Shift + W + ( A hoặc D ) rồi bấm C để thực hiện thao tác lướt ngồi.")
         if hasattr(self, 'lbl_stopkeys_row'):
-            self._add_hover_widget(self.lbl_stopkeys_row, "Danh sÃ¡ch phÃ­m dá»«ng kháº©n cáº¥p.")
+            self._add_hover_widget(self.lbl_stopkeys_row, "Danh sách phím dừng khẩn cấp.")
         if hasattr(self, 'lbl_adsmode_row'):
-            self._add_hover_widget(self.lbl_adsmode_row, "Tráº¡ng thÃ¡i cháº¿ Ä‘á»™ ADS hiá»‡n táº¡i.")
+            self._add_hover_widget(self.lbl_adsmode_row, "Trạng thái chế độ ADS hiện tại.")
         if hasattr(self, 'lbl_guitoggle_row'):
-            self._add_hover_widget(self.lbl_guitoggle_row, "PhÃ­m áº©n hoáº·c hiá»‡n cá»­a sá»• app ngay láº­p tá»©c.")
+            self._add_hover_widget(self.lbl_guitoggle_row, "Phím ẩn hoặc hiện cửa sổ app ngay lập tức.")
         if hasattr(self, 'lbl_overlay_row'):
-            self._add_hover_widget(self.lbl_overlay_row, "PhÃ­m Ä‘iá»u khiá»ƒn lá»›p overlay hiá»ƒn thá»‹ trong game.")
+            self._add_hover_widget(self.lbl_overlay_row, "Phím điều khiển lớp overlay hiển thị trong game.")
         if hasattr(self, 'lbl_capture_row'):
-            self._add_hover_widget(self.lbl_capture_row, "Chá»n backend chá»¥p mÃ n hÃ¬nh dÃ¹ng cho detect vÃ  runtime.")
+            self._add_hover_widget(self.lbl_capture_row, "Chọn backend chụp màn hình dùng cho detect và runtime.")
 
     def _add_hover_target(self, parent: QWidget, rect: QRect, text: str):
         anchor = QFrame(parent)
@@ -4389,74 +4463,55 @@ class MacroWindow(QMainWindow):
 
         cx, cy = 14, 7
 
-        def gap_cross():
-            gap = 2
-            arm = 4
+        def gap_cross(gap: int, arm: int):
             painter.drawLine(cx - gap - arm, cy, cx - gap, cy)
             painter.drawLine(cx + gap, cy, cx + gap + arm, cy)
             painter.drawLine(cx, cy - gap - arm, cx, cy - gap)
             painter.drawLine(cx, cy + gap, cx, cy + gap + arm)
 
-        if "Gap Cross" in style_name:
-            gap_cross()
-        elif "T-Shape" in style_name:
-            gap = 2
-            arm = 4
-            painter.drawLine(cx - gap - arm, cy, cx - gap, cy)
-            painter.drawLine(cx + gap, cy, cx + gap + arm, cy)
-            painter.drawLine(cx, cy + gap, cx, cy + gap + arm)
-        elif "Circle Dot" in style_name:
+        # Đồng bộ preview với renderer runtime của CrosshairOverlay để dropdown/current preview khớp nhau.
+        if style_name == "dot":
+            painter.setBrush(QBrush(QColor("#f2f2f2")))
+            painter.drawEllipse(QPoint(cx, cy), 2, 2)
+        elif style_name == "plus":
+            painter.drawLine(cx - 5, cy, cx + 5, cy)
+            painter.drawLine(cx, cy - 5, cx, cy + 5)
+        elif style_name == "x":
+            painter.drawLine(cx - 4, cy - 4, cx + 4, cy + 4)
+            painter.drawLine(cx - 4, cy + 4, cx + 4, cy - 4)
+        elif style_name == "circle":
             painter.drawEllipse(QPoint(cx, cy), 4, 4)
             painter.setBrush(QBrush(QColor("#f2f2f2")))
             painter.drawEllipse(QPoint(cx, cy), 1, 1)
-        elif "Classic" in style_name:
-            painter.drawLine(cx - 5, cy, cx + 5, cy)
-            painter.drawLine(cx, cy - 5, cx, cy + 5)
-        elif "Micro Dot" in style_name or "Square Dot" in style_name:
-            painter.setBrush(QBrush(QColor("#f2f2f2")))
-            painter.drawEllipse(QPoint(cx, cy), 2, 2)
-        elif "Hollow Box" in style_name:
-            painter.drawRect(cx - 4, cy - 4, 8, 8)
-        elif "Cross + Dot" in style_name or "Plus Dot" in style_name:
-            painter.drawLine(cx - 5, cy, cx + 5, cy)
-            painter.drawLine(cx, cy - 5, cx, cy + 5)
+        elif style_name == "hollow_circle":
+            painter.drawEllipse(QPoint(cx, cy), 4, 4)
+        elif style_name == "tactical":
+            gap_cross(3, 5)
             painter.setBrush(QBrush(QColor("#f2f2f2")))
             painter.drawEllipse(QPoint(cx, cy), 1, 1)
-        elif "Chevron" in style_name or "V-Shape" in style_name:
-            painter.drawLine(cx - 5, cy + 3, cx, cy - 1)
-            painter.drawLine(cx + 5, cy + 3, cx, cy - 1)
-        elif "X-Shape" in style_name:
-            painter.drawLine(cx - 4, cy - 4, cx + 4, cy + 4)
-            painter.drawLine(cx - 4, cy + 4, cx + 4, cy - 4)
-        elif "Diamond" in style_name:
+        elif style_name == "small_cross":
+            gap_cross(2, 3)
+        elif style_name == "thick_cross":
+            pen.setWidth(3)
+            painter.setPen(pen)
+            painter.drawLine(cx - 5, cy, cx + 5, cy)
+            painter.drawLine(cx, cy - 5, cx, cy + 5)
+        elif style_name == "sniper":
+            gap_cross(3, 6)
+            painter.drawEllipse(QPoint(cx, cy), 5, 5)
+        elif style_name == "diamond":
             painter.drawLine(cx, cy - 4, cx + 4, cy)
             painter.drawLine(cx + 4, cy, cx, cy + 4)
             painter.drawLine(cx, cy + 4, cx - 4, cy)
             painter.drawLine(cx - 4, cy, cx, cy - 4)
-        elif "Triangle" in style_name:
+        elif style_name == "triangle":
             painter.drawLine(cx, cy - 4, cx - 4, cy + 3)
             painter.drawLine(cx - 4, cy + 3, cx + 4, cy + 3)
             painter.drawLine(cx + 4, cy + 3, cx, cy - 4)
-        elif "Bracket Dot" in style_name or "Center Gap" in style_name:
-            gap_cross()
-            painter.setBrush(QBrush(QColor("#f2f2f2")))
-            painter.drawEllipse(QPoint(cx, cy), 1, 1)
-        elif "Shuriken" in style_name:
-            offset = 2
-            arm = 4
-            painter.drawLine(cx - offset, cy - offset, cx - offset, cy - offset - arm)
-            painter.drawLine(cx + offset, cy + offset, cx + offset, cy + offset + arm)
-            painter.drawLine(cx - offset - arm, cy + offset, cx - offset, cy + offset)
-            painter.drawLine(cx + offset, cy - offset, cx + offset + arm, cy - offset)
-            painter.setBrush(QBrush(QColor("#f2f2f2")))
-            painter.drawEllipse(QPoint(cx, cy), 1, 1)
-        elif "Star" in style_name:
-            painter.drawLine(cx - 5, cy, cx + 5, cy)
-            painter.drawLine(cx, cy - 5, cx, cy + 5)
-            painter.drawLine(cx - 4, cy - 4, cx + 4, cy + 4)
-            painter.drawLine(cx - 4, cy + 4, cx + 4, cy - 4)
+        elif style_name == "minimal":
+            gap_cross(1, 2)
         else:
-            gap_cross()
+            gap_cross(2, 4)
 
         painter.end()
         return QIcon(pixmap)
@@ -4466,18 +4521,18 @@ class MacroWindow(QMainWindow):
             swatch = color_value
         else:
             color_map = {
-                "Äá»": QColor(255, 30, 30),
-                "Äá» Cam": QColor(255, 69, 0),
+                "Đỏ": QColor(255, 30, 30),
+                "Đỏ Cam": QColor(255, 69, 0),
                 "Cam": QColor(255, 140, 0),
-                "VÃ ng": QColor(255, 215, 0),
-                "Xanh LÃ¡": QColor(0, 255, 0),
-                "Xanh Ngá»c": QColor(0, 255, 255),
-                "Xanh DÆ°Æ¡ng": QColor(0, 180, 255),
-                "TÃ­m": QColor(180, 0, 255),
-                "TÃ­m Há»“ng": QColor(255, 60, 255),
-                "Há»“ng": QColor(255, 105, 180),
-                "Tráº¯ng": QColor(255, 255, 255),
-                "Báº¡c": QColor(192, 192, 192),
+                "Vàng": QColor(255, 215, 0),
+                "Xanh Lá": QColor(0, 255, 0),
+                "Xanh Ngọc": QColor(0, 255, 255),
+                "Xanh Dương": QColor(0, 180, 255),
+                "Tím": QColor(180, 0, 255),
+                "Tím Hồng": QColor(255, 60, 255),
+                "Hồng": QColor(255, 105, 180),
+                "Trắng": QColor(255, 255, 255),
+                "Bạc": QColor(192, 192, 192),
             }
             swatch = color_map.get(color_value, QColor(255, 30, 30))
 
@@ -4519,9 +4574,9 @@ class MacroWindow(QMainWindow):
                 background-color: #1b1b1b;
                 color: #d6d6d6;
                 border: 1px solid #444;
-                border-radius: 4px;
+                border-radius: 6px;
                 font-size: 11px;
-                padding: 0 8px;
+                padding: 0 10px;
             }
             QComboBox:hover {
                 background-color: #1b1b1b;
@@ -4896,7 +4951,7 @@ class MacroWindow(QMainWindow):
                 border: none;
             }
         """)
-        self.page_banner_title = QLabel("TRUNG TÃ‚M ÄIá»€U KHIá»‚N")
+        self.page_banner_title = QLabel("TRUNG TÂM ĐIỀU KHIỂN")
         self.page_banner_title.setStyleSheet("color: #f3f6fb; font-size: 17px; font-weight: 900; letter-spacing: 1px; background: transparent; border: none;")
         self.page_banner_subtitle = QLabel("Macro & Aim By Di88")
         self.page_banner_subtitle.setStyleSheet("color: #a8ccef; font-size: 11px; font-weight: 700; letter-spacing: 0px; background: transparent; border: none;")
@@ -4904,7 +4959,7 @@ class MacroWindow(QMainWindow):
         banner_text_layout.addWidget(self.page_banner_title)
         banner_text_layout.addWidget(self.page_banner_subtitle)
 
-        self.page_banner_badge = QLabel("Tá»”NG Há»¢P")
+        self.page_banner_badge = QLabel("TỔNG HỢP")
         self.page_banner_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.page_banner_badge.setMinimumWidth(122)
         self.page_banner_badge.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
@@ -5035,17 +5090,17 @@ class MacroWindow(QMainWindow):
 
         detection_layout.addLayout(detection_row)
 
-        self.group_settings = MacroTitledBox("HÆ°á»›ng Dáº«n Sá»­ Dá»¥ng", "SettingsBox")
+        self.group_settings = MacroTitledBox("Hướng Dẫn Sử Dụng", "SettingsBox")
         self.group_settings.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         settings_layout = self.group_settings.content_layout()
         settings_layout.setSpacing(6)
         self.header_settings = None
-        self.bind_box = MacroTitledBox("Bind NÃºt", "BindBox")
+        self.bind_box = MacroTitledBox("Bind Nút", "BindBox")
         self.bind_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         bind_layout = self.bind_box.content_layout()
         bind_layout.setSpacing(6)
         self.header_bind = None
-        self.toggle_box = MacroTitledBox("Báº­t/Táº¯t", "ToggleBox")
+        self.toggle_box = MacroTitledBox("Bật/Tắt", "ToggleBox")
         self.toggle_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         toggle_layout = self.toggle_box.content_layout()
         toggle_layout.setSpacing(6)
@@ -5112,10 +5167,10 @@ class MacroWindow(QMainWindow):
         self.btn_fastloot_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_fastloot_toggle.setFixedSize(50, 24)
         self.btn_fastloot_toggle.hide()
-        self.lbl_fastloot_row = add_settings_grid_row(bind_layout, "Nháº·t Äá»“ Nhanh", self.btn_fastloot_key)
+        self.lbl_fastloot_row = add_settings_grid_row(bind_layout, "Nhặt Đồ Nhanh", self.btn_fastloot_key)
         self.btn_fastloot_switch = MobileSwitch(False)
         self.btn_fastloot_switch.toggled.connect(self.toggle_fast_loot)
-        self.lbl_fastloot_toggle_row = add_toggle_row(toggle_layout, "Nháº·t Äá»“ Nhanh", self.btn_fastloot_switch)
+        self.lbl_fastloot_toggle_row = add_toggle_row(toggle_layout, "Nhặt Đồ Nhanh", self.btn_fastloot_switch)
         self.lbl_fastloot_toggle_row.setFixedWidth(122)
         self.lbl_fastloot_toggle_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -5124,7 +5179,7 @@ class MacroWindow(QMainWindow):
         self.btn_slide_hint.setEnabled(False)
         self.btn_slide_hint.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_slide_hint)
-        self.lbl_slide_row = add_settings_grid_row(settings_layout, "LÆ°á»›t Ngá»“i", self.btn_slide_hint)
+        self.lbl_slide_row = add_settings_grid_row(settings_layout, "Lướt Ngồi", self.btn_slide_hint)
 
         self.btn_slide_toggle = QPushButton("ON")
         self.btn_slide_toggle.setObjectName("SlideToggleBtn")
@@ -5135,7 +5190,7 @@ class MacroWindow(QMainWindow):
         self.btn_slide_toggle.hide()
         self.btn_slide_switch = MobileSwitch(True)
         self.btn_slide_switch.toggled.connect(self.toggle_slide_trick)
-        self.lbl_slide_toggle_row = add_toggle_row(toggle_layout, "LÆ°á»›t Ngá»“i", self.btn_slide_switch)
+        self.lbl_slide_toggle_row = add_toggle_row(toggle_layout, "Lướt Ngồi", self.btn_slide_switch)
         self.lbl_slide_toggle_row.setFixedWidth(122)
         self.lbl_slide_toggle_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -5144,28 +5199,28 @@ class MacroWindow(QMainWindow):
         self.btn_slot1_hint.setEnabled(False)
         self.btn_slot1_hint.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_slot1_hint)
-        self.lbl_slot1_row = add_settings_grid_row(settings_layout, "PhÃ­m SÃºng 1", self.btn_slot1_hint)
+        self.lbl_slot1_row = add_settings_grid_row(settings_layout, "Phím Súng 1", self.btn_slot1_hint)
 
         self.btn_slot2_hint = QPushButton("2")
         self.btn_slot2_hint.setProperty("role", "setting-btn")
         self.btn_slot2_hint.setEnabled(False)
         self.btn_slot2_hint.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_slot2_hint)
-        self.lbl_slot2_row = add_settings_grid_row(settings_layout, "PhÃ­m SÃºng 2", self.btn_slot2_hint)
+        self.lbl_slot2_row = add_settings_grid_row(settings_layout, "Phím Súng 2", self.btn_slot2_hint)
 
         self.btn_stopkeys = QPushButton("X, G, 5")
         self.btn_stopkeys.setProperty("role", "setting-btn")
         self.btn_stopkeys.setEnabled(False)
         self.btn_stopkeys.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_stopkeys)
-        self.lbl_stopkeys_row = add_settings_grid_row(settings_layout, "PhÃ­m Dá»«ng Kháº©n", self.btn_stopkeys)
+        self.lbl_stopkeys_row = add_settings_grid_row(settings_layout, "Phím Dừng Khẩn", self.btn_stopkeys)
 
         self.btn_adsmode = QPushButton("HOLD")
         self.btn_adsmode.setProperty("role", "setting-btn")
         self.btn_adsmode.setEnabled(False)
         self.btn_adsmode.setCursor(Qt.CursorShape.ArrowCursor)
         self.style_setting_button(self.btn_adsmode)
-        self.lbl_adsmode_row = add_settings_grid_row(settings_layout, "Kiá»ƒu ADS", self.btn_adsmode)
+        self.lbl_adsmode_row = add_settings_grid_row(settings_layout, "Kiểu ADS", self.btn_adsmode)
 
         self.btn_guitoggle = QPushButton("F1")
         self.btn_guitoggle.setProperty("role", "setting-btn")
@@ -5173,7 +5228,7 @@ class MacroWindow(QMainWindow):
         self.btn_guitoggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self.style_setting_button(self.btn_guitoggle)
         self.btn_guitoggle.clicked.connect(lambda: self.start_keybind_listening(self.btn_guitoggle, "gui_toggle"))
-        self.lbl_guitoggle_row = add_settings_grid_row(bind_layout, "áº¨n/Hiá»‡n APP", self.btn_guitoggle)
+        self.lbl_guitoggle_row = add_settings_grid_row(bind_layout, "Ẩn/Hiện APP", self.btn_guitoggle)
 
         self.btn_overlay_key = QPushButton("delete")
         self.btn_overlay_key.setProperty("role", "setting-btn")
@@ -5283,26 +5338,26 @@ class MacroWindow(QMainWindow):
         self.crosshair_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.crosshair_box.setFixedHeight(82)
         cross_layout = self.crosshair_box.content_layout()
+        cross_layout.setContentsMargins(10, 16, 10, 8)
         cross_layout.setSpacing(6)
         self.header_crosshair = None
 
         cross_grid = QGridLayout()
         cross_grid.setContentsMargins(0, 0, 0, 0)
         cross_grid.setHorizontalSpacing(3)
-        cross_grid.setVerticalSpacing(2)
+        cross_grid.setVerticalSpacing(0)
         cross_grid.setColumnStretch(0, 1)
         cross_grid.setColumnStretch(1, 1)
 
-        self.lbl_cross_style = QLabel("\u003e \u004b\u0069\u1ec3\u0075 \u0054\u00e2\u006d \u003c")
+        self.lbl_cross_style = QLabel("")
         self.lbl_cross_style.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_cross_style.setStyleSheet("color: #c6c6c6; font-size: 8px; font-weight: bold;")
+        self.lbl_cross_style.hide()
 
-        self.lbl_cross_color = QLabel("> MÃ u <")
+        self.lbl_cross_color = QLabel("")
         self.lbl_cross_color.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_cross_color.setStyleSheet("color: #c6c6c6; font-size: 8px; font-weight: bold;")
-
-        cross_grid.addWidget(self.lbl_cross_style, 0, 0)
-        cross_grid.addWidget(self.lbl_cross_color, 0, 1)
+        self.lbl_cross_color.hide()
         self.btn_cross_toggle = QPushButton("ON")
         self.btn_cross_toggle.setObjectName("CrosshairToggleBtn")
         self.btn_cross_toggle.setProperty("checked", "true")
@@ -5314,24 +5369,18 @@ class MacroWindow(QMainWindow):
         self.btn_cross_toggle.hide()
 
         self.crosshair_style_options = [
-            ("Chá»¯ Tháº­p Há»Ÿ", "1: Gap Cross"),
-            ("Chá»¯ T", "2: T-Shape"),
-            ("TrÃ²n CÃ³ Cháº¥m", "3: Circle Dot"),
-            ("Cá»• Äiá»ƒn", "5: Classic"),
-            ("Cháº¥m Nhá»", "6: Micro Dot"),
-            ("Ã” Rá»—ng", "7: Hollow Box"),
-            ("Chá»¯ Tháº­p CÃ³ Cháº¥m", "8: Cross + Dot"),
-            ("MÅ©i TÃªn", "9: Chevron"),
-            ("Chá»¯ X", "10: X-Shape"),
-            ("Kim CÆ°Æ¡ng", "11: Diamond"),
-            ("\u0054\u0061\u006d \u0047\u0069\u00e1\u0063", "13: Triangle"),
-            ("Cháº¥m VuÃ´ng", "14: Square Dot"),
-            ("Ngoáº·c CÃ³ Cháº¥m", "17: Bracket Dot"),
-            ("Phi TiÃªu", "18: Shuriken"),
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-            ("Dáº¥u Cá»™ng CÃ³ Cháº¥m", "22: Plus Dot"),
-            ("Chá»¯ V", "23: V-Shape"),
-            ("NgÃ´i Sao", "24: Star"),
+            ("Dot", "dot"),
+            ("Plus", "plus"),
+            ("X", "x"),
+            ("Circle", "circle"),
+            ("Hollow Circle", "hollow_circle"),
+            ("Tactical", "tactical"),
+            ("Small Cross", "small_cross"),
+            ("Thick Cross", "thick_cross"),
+            ("Sniper", "sniper"),
+            ("Diamond", "diamond"),
+            ("Triangle", "triangle"),
+            ("Minimal", "minimal"),
         ]
         self.combo_style = CenteredComboBox(center_mode="full")
         self.combo_style.setObjectName("CrosshairStyleCombo")
@@ -5353,7 +5402,7 @@ class MacroWindow(QMainWindow):
             }
         """)
         self.combo_style.addItems([display for display, _ in self.crosshair_style_options])
-        self.combo_style.setCurrentText("Chá»¯ Tháº­p Há»Ÿ")
+        self.combo_style.setCurrentText("X")
         for i in range(self.combo_style.count()):
             _, internal_style = self.crosshair_style_options[i]
             self.combo_style.setItemIcon(i, self.build_crosshair_preview_icon(internal_style))
@@ -5384,10 +5433,10 @@ class MacroWindow(QMainWindow):
             }
         """)
         self.combo_color.addItems([
-            "Äá»", "Äá» Cam", "Cam", "VÃ ng",
-            "Xanh LÃ¡", "Xanh Ngá»c", "Xanh DÆ°Æ¡ng",
-            "TÃ­m", "TÃ­m Há»“ng", "Há»“ng",
-            "Tráº¯ng", "Báº¡c"
+            "Đỏ", "Đỏ Cam", "Cam", "Vàng",
+            "Xanh Lá", "Xanh Ngọc", "Xanh Dương",
+            "Tím", "Tím Hồng", "Hồng",
+            "Trắng", "Bạc"
         ])
         self.crosshair_color_swatches = [
             QColor(255, 30, 30),
@@ -5403,7 +5452,7 @@ class MacroWindow(QMainWindow):
             QColor(255, 255, 255),
             QColor(192, 192, 192),
         ]
-        self.combo_color.setCurrentText("Äá»")
+        self.combo_color.setCurrentText("Đỏ")
         for i in range(self.combo_color.count()):
             self.combo_color.setItemIcon(i, self.build_color_preview_icon(self.crosshair_color_swatches[i]))
             self.combo_color.setItemData(i, int(Qt.AlignmentFlag.AlignCenter), Qt.ItemDataRole.TextAlignmentRole)
@@ -5416,11 +5465,11 @@ class MacroWindow(QMainWindow):
         self.cross_toggle_buttons = QWidget()
         self.cross_toggle_buttons.hide()
 
-        self.btn_cross_on = QPushButton("Báº¬T")
+        self.btn_cross_on = QPushButton("BẬT")
         self.btn_cross_on.hide()
         self.btn_cross_on.clicked.connect(lambda: self.toggle_crosshair(True))
 
-        self.btn_cross_off = QPushButton("Táº®T")
+        self.btn_cross_off = QPushButton("TẮT")
         self.btn_cross_off.hide()
         self.btn_cross_off.clicked.connect(lambda: self.toggle_crosshair(False))
 
@@ -5433,12 +5482,12 @@ class MacroWindow(QMainWindow):
         self.style_setting_button(self.btn_cross_bind)
         self.btn_cross_bind.clicked.connect(lambda: self.start_keybind_listening(self.btn_cross_bind, "crosshair_toggle_key"))
         self.btn_cross_bind.hide()
-        cross_grid.addWidget(self.combo_style, 1, 0)
-        cross_grid.addWidget(self.combo_color, 1, 1)
+        cross_grid.addWidget(self.combo_style, 0, 0)
+        cross_grid.addWidget(self.combo_color, 0, 1)
         cross_layout.addLayout(cross_grid)
         self.btn_crosshair_switch = MobileSwitch(True)
         self.btn_crosshair_switch.toggled.connect(self.toggle_crosshair)
-        self.lbl_cross_toggle_row = add_toggle_row(toggle_layout, "TÃ¢m Ngáº¯m", self.btn_crosshair_switch)
+        self.lbl_cross_toggle_row = add_toggle_row(toggle_layout, "Tâm Ngắm", self.btn_crosshair_switch)
         self.lbl_cross_toggle_row.setFixedWidth(122)
         self.lbl_cross_toggle_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -5454,11 +5503,11 @@ class MacroWindow(QMainWindow):
         self.btn_macro.setFixedHeight(32)
         self.update_macro_style(False)
 
-        self.lbl_stance = QLabel("TÆ¯ THáº¾ : Äá»¨NG")
+        self.lbl_stance = QLabel("TƯ THẾ : ĐỨNG")
         self.lbl_stance.setObjectName("StatusValueLabel")
         self.lbl_stance.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_stance.setFixedHeight(32)
-        self.update_stance_status_style("TÆ¯ THáº¾ : Äá»¨NG")
+        self.update_stance_status_style("TƯ THẾ : ĐỨNG")
 
         self.lbl_ads_status = QLabel("ADS : HOLD")
         self.lbl_ads_status.setObjectName("StatusValueLabel")
@@ -5507,13 +5556,13 @@ class MacroWindow(QMainWindow):
         row_btns = QHBoxLayout()
         row_btns.setContentsMargins(0, 0, 0, 0)
         row_btns.setSpacing(8)
-        btn_default = QPushButton("CÃ i Äáº·t Gá»‘c")
+        btn_default = QPushButton("Cài Đặt Gốc")
         btn_default.setObjectName("DefaultBtn")
         btn_default.setFixedHeight(32)
         btn_default.setCursor(Qt.CursorShape.PointingHandCursor)
         self.style_action_button(btn_default, primary=False)
         btn_default.clicked.connect(self.reset_to_defaults)
-        btn_save = QPushButton("LÆ°u CÃ i Äáº·t")
+        btn_save = QPushButton("Lưu Cài Đặt")
         btn_save.setObjectName("SaveBtn")
         btn_save.setFixedHeight(32)
         btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5587,9 +5636,9 @@ class MacroWindow(QMainWindow):
         left_action_layout = QHBoxLayout(self.left_action_wrap)
         left_action_layout.setContentsMargins(0, 0, 0, 0)
         left_action_layout.setSpacing(0)
-        self.btn_default_main = QPushButton("CÃ i Äáº·t Gá»‘c")
+        self.btn_default_main = QPushButton("Cài Đặt Gốc")
         self.btn_default_main.setObjectName("DefaultBtn")
-        self.btn_default_main.setText("CÃ i Äáº·t Gá»‘c")
+        self.btn_default_main.setText("Cài Đặt Gốc")
         self.btn_default_main.setFixedHeight(36)
         self.btn_default_main.setMinimumWidth(180)
         self.btn_default_main.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5617,9 +5666,9 @@ class MacroWindow(QMainWindow):
         right_action_layout = QHBoxLayout(self.right_action_wrap)
         right_action_layout.setContentsMargins(0, 0, 0, 0)
         right_action_layout.setSpacing(0)
-        self.btn_save_main = QPushButton("LÆ°u CÃ i Äáº·t")
+        self.btn_save_main = QPushButton("Lưu Cài Đặt")
         self.btn_save_main.setObjectName("SaveBtn")
-        self.btn_save_main.setText("LÆ°u CÃ i Äáº·t")
+        self.btn_save_main.setText("Lưu Cài Đặt")
         self.btn_save_main.setFixedHeight(36)
         self.btn_save_main.setMinimumWidth(180)
         self.btn_save_main.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5646,13 +5695,13 @@ class MacroWindow(QMainWindow):
         QTimer.singleShot(0, self.sync_window_height_to_content)
 
     def setup_ui(self):
-        # Container chÃ­nh (Bo trÃ²n, Gradient ná»n)
+        # Container chính (Bo tròn, Gradient nền)
         self.container = QFrame(self)
         self.container.setObjectName("MainContainer")
         self.container.setGeometry(5, 5, 640, 490) # Adjusted for DropShadow
         
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
+        # Đã làm sạch chú thích lỗi mã hóa.
         # shadow = QGraphicsDropShadowEffect()
         # shadow.setBlurRadius(4) 
         # shadow.setOffset(0, 4)
@@ -5686,11 +5735,11 @@ class MacroWindow(QMainWindow):
         self.app_title_label.setObjectName("AppTitle")
         glow = QGraphicsDropShadowEffect()
         glow.setBlurRadius(4)
-        glow.setColor(QColor(0, 0, 0, 200))  # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        glow.setColor(QColor(0, 0, 0, 200))  # Đã làm sạch chú thích lỗi mã hóa.
         glow.setOffset(1, 1) 
         self.app_title_label.setGraphicsEffect(glow)
 
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         self.app_logo = QLabel()
         icon_path = get_resource_path("di88vp.ico")
         logo_icon = QIcon(icon_path)
@@ -5705,7 +5754,7 @@ class MacroWindow(QMainWindow):
         header_layout.addSpacing(5)
         header_layout.addWidget(btn_close)
         
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         self.title_bar.mousePressEvent = self.mousePressEvent
         self.title_bar.mouseMoveEvent = self.mouseMoveEvent
         
@@ -5736,7 +5785,7 @@ class MacroWindow(QMainWindow):
         left_layout = QVBoxLayout(left_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(5)
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         left_column.setMinimumWidth(280)
         
         # GUN 1
@@ -5777,7 +5826,7 @@ class MacroWindow(QMainWindow):
         settings_layout.setContentsMargins(5, 5, 5, 5)
         settings_layout.setSpacing(10)
         
-        lbl_settings_title = QLabel("CÃ€I Äáº¶T CHUNG")
+        lbl_settings_title = QLabel("CÀI ĐẶT CHUNG")
         lbl_settings_title.setStyleSheet("color: #ffffff; font-weight: bold; letter-spacing: 1px;")
         lbl_settings_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         settings_layout.addWidget(lbl_settings_title)
@@ -5843,7 +5892,7 @@ class MacroWindow(QMainWindow):
         self.btn_adsmode.setCursor(Qt.CursorShape.ArrowCursor)
 
         # GUI Toggle
-        self.btn_guitoggle = add_setting_row(settings_layout, "Báº¬T/Táº®t GUI", "F1")
+        self.btn_guitoggle = add_setting_row(settings_layout, "BẬT/TẮt GUI", "F1")
         self.btn_guitoggle.setEnabled(False)
         self.btn_guitoggle.setCursor(Qt.CursorShape.ArrowCursor)
         
@@ -5894,9 +5943,9 @@ class MacroWindow(QMainWindow):
         bottom_row.setContentsMargins(0, 0, 0, 0)
         bottom_row.setSpacing(15)
         
-        # Left Bottom Card: TÆ° tháº¿ / Macro
+        # Left Bottom Card: Tư thế / Macro
         self.footer = QFrame()
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         self.footer.setFixedHeight(115)
         self.footer.setStyleSheet('''
             QFrame {
@@ -5909,7 +5958,7 @@ class MacroWindow(QMainWindow):
         f_layout.setSpacing(2)
         f_layout.setContentsMargins(8, 8, 8, 8)
 
-        self.lbl_stance = QLabel("TÆ¯ THáº¾: Äá»¨NG")
+        self.lbl_stance = QLabel("TƯ THẾ: ĐỨNG")
         self.lbl_stance.setObjectName("StanceLabel")
         self.lbl_stance.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_stance.setFixedHeight(30)
@@ -5945,7 +5994,7 @@ class MacroWindow(QMainWindow):
 
         bottom_row.addWidget(self.footer)
 
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         cross_card = QFrame()
         cross_card.setFixedHeight(115)
         cross_card.setStyleSheet('''
@@ -5959,7 +6008,7 @@ class MacroWindow(QMainWindow):
         cross_card_layout.setSpacing(6)
         cross_card_layout.setContentsMargins(10, 8, 10, 8)
 
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         lbl_cross.setObjectName("CrosshairSectionTitle")
         cross_card_layout.addWidget(lbl_cross)
 
@@ -5987,12 +6036,12 @@ class MacroWindow(QMainWindow):
 
         self.combo_color = QComboBox()
         self.combo_color.addItems([
-            "Äá»", "Äá» Cam", "Cam", "VÃ ng",
-            "Xanh LÃ¡", "Xanh Ngá»c", "Xanh DÆ°Æ¡ng",
-            "TÃ­m", "TÃ­m Há»“ng", "Há»“ng",
-            "Tráº¯ng", "Báº¡c"
+            "Đỏ", "Đỏ Cam", "Cam", "Vàng",
+            "Xanh Lá", "Xanh Ngọc", "Xanh Dương",
+            "Tím", "Tím Hồng", "Hồng",
+            "Trắng", "Bạc"
         ])
-        self.combo_color.setCurrentText("Äá»")
+        self.combo_color.setCurrentText("Đỏ")
         self.combo_color.setFixedHeight(20)
         self.combo_color.currentIndexChanged.connect(self.change_crosshair_color)
 
@@ -6008,13 +6057,13 @@ class MacroWindow(QMainWindow):
         cross_card_layout.addWidget(sep)
 
         row_btns = QHBoxLayout()
-        btn_default = QPushButton("CÃ€I Äáº¶T Gá»C")
+        btn_default = QPushButton("CÀI ĐẶT GỐC")
         btn_default.setObjectName("DefaultBtn")
         btn_default.setFixedHeight(30)
         btn_default.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_default.clicked.connect(self.reset_to_defaults)
 
-        btn_save = QPushButton("LÆ¯U CÃ€I Äáº¶T")
+        btn_save = QPushButton("LƯU CÀI ĐẶT")
         btn_save.setObjectName("SaveBtn")
         btn_save.setFixedHeight(30)
         btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -6038,7 +6087,7 @@ class MacroWindow(QMainWindow):
         self.load_crosshair_settings()
 
 
-    # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+    # Đã làm sạch chú thích lỗi mã hóa.
     def toggle_overlay_visibility(self):
         if self.btn_overlay_toggle.text() == "ON":
             self.game_overlay.hide()
@@ -6111,7 +6160,7 @@ class MacroWindow(QMainWindow):
 
     def change_crosshair_style(self, index):
         style_map = dict(self.crosshair_style_options)
-        style = style_map.get(self.combo_style.currentText(), "1: Gap Cross")
+        style = style_map.get(self.combo_style.currentText(), "x")
         self.crosshair.set_style(style)
         self.save_crosshair_settings() # Auto-save
 
@@ -6473,7 +6522,7 @@ class MacroWindow(QMainWindow):
             self.btn_mode_dxgi.setProperty("active", "true" if mode == "MSS" else "false")
             self.repolish(self.btn_mode_dxgi)
         if hasattr(self, "lbl_aim_runtime_meta") and self.lbl_aim_runtime_meta:
-            backend_text = "ChÆ°a náº¡p"
+            backend_text = "Chưa nạp"
             runtime_source = ""
             if hasattr(self, "last_data") and isinstance(self.last_data, dict):
                 runtime_source = str(self.last_data.get("aim", {}).get("runtime_source", "") or "")
@@ -6504,7 +6553,7 @@ class MacroWindow(QMainWindow):
                 self.combo_aim_capture.setCurrentIndex(target_index)
                 self.combo_aim_capture.blockSignals(False)
         if hasattr(self, "lbl_aim_runtime_meta") and self.lbl_aim_runtime_meta:
-            backend_text = "ChÆ°a náº¡p"
+            backend_text = "Chưa nạp"
             runtime_source = ""
             if hasattr(self, "last_data") and isinstance(self.last_data, dict):
                 runtime_source = str(self.last_data.get("aim", {}).get("runtime_source", "") or "")
@@ -6535,15 +6584,15 @@ class MacroWindow(QMainWindow):
             if is_on:
                 self.crosshair.show()
                 self.crosshair.raise_()
-            style = data.get("style", "10: X-Shape")
+            style = self.normalize_crosshair_style_value(data.get("style", "x"))
             display_names = [display for display, internal in self.crosshair_style_options if internal == style]
-            display_name = display_names[0] if display_names else "Chá»¯ Tháº­p Há»Ÿ"
+            display_name = display_names[0] if display_names else "X"
             idx = self.combo_style.findText(display_name)
             self.combo_style.setCurrentIndex(idx if idx >= 0 else 0)
             self.crosshair.set_style(style)
             saved_color_idx = data.get("color_index", None)
             if saved_color_idx is None:
-                saved_color_name = data.get("color", "Äá»")
+                saved_color_name = data.get("color", "Đỏ")
                 idx = self.combo_color.findText(saved_color_name)
                 saved_color_idx = idx if idx >= 0 else 0
             self.combo_color.setCurrentIndex(saved_color_idx)
@@ -6560,9 +6609,9 @@ class MacroWindow(QMainWindow):
         try:
             is_active = self.btn_cross_toggle.isChecked()
             style_map = dict(self.crosshair_style_options)
-            style_val = style_map.get(self.combo_style.currentText(), "10: X-Shape")
+            style_val = style_map.get(self.combo_style.currentText(), "x")
             color_idx = self.combo_color.currentIndex()
-            color_name = self.combo_color.itemText(color_idx) if color_idx >= 0 else "Äá»"
+            color_name = self.combo_color.itemText(color_idx) if color_idx >= 0 else "Đỏ"
             toggle_key = getattr(self, "temp_crosshair_toggle_key_value", None) or (self.btn_cross_bind.text().lower() if hasattr(self, 'btn_cross_bind') else "none")
             if hasattr(self, "btn_adsmode") and self.btn_adsmode: ads_mode = self.btn_adsmode.text().strip().upper() or "HOLD"
             elif hasattr(self, "lbl_ads_status") and self.lbl_ads_status: ads_mode = self.lbl_ads_status.text().replace("ADS :", "").strip().upper() or "HOLD"
@@ -6575,14 +6624,14 @@ class MacroWindow(QMainWindow):
         """Reset all settings to project defaults and update UI"""
         confirmed = AppNoticeDialog.question(
             self,
-            "XÃ¡c Nháº­n CÃ i Äáº·t Gá»‘c",
-            "Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n Ä‘áº·t láº¡i toÃ n bá»™ cÃ i Ä‘áº·t vá» máº·c Ä‘á»‹nh khÃ´ng?\n(LÆ°u Ã½: HÃ nh Ä‘á»™ng nÃ y khÃ´ng thá»ƒ hoÃ n tÃ¡c)"
+            "Xác Nhận Cài Đặt Gốc",
+            "Bạn có chắc chắn muốn đặt lại toàn bộ cài đặt về mặc định không?\n(Lưu ý: Hành động này không thể hoàn tác)"
         )
         if not confirmed:
             return
         
         try:
-            # 1. Reset settings.json vá» máº·c Ä‘á»‹nh
+            # 1. Reset settings.json về mặc định
             defaults = self.settings_manager.reset_to_defaults()
             self.settings_manager._cache = None  # Force reload
             
@@ -6604,16 +6653,16 @@ class MacroWindow(QMainWindow):
             # 4. Reset Crosshair UI
             cr = defaults.get('crosshair', {})
             if hasattr(self, 'combo_style') and self.combo_style:
-                style = cr.get('style', '10: X-Shape')
+                style = self.normalize_crosshair_style_value(cr.get('style', 'x'))
                 display_names = [display for display, internal in self.crosshair_style_options if internal == style]
-                idx = self.combo_style.findText(display_names[0] if display_names else "Chá»¯ Tháº­p Há»Ÿ")
+                idx = self.combo_style.findText(display_names[0] if display_names else "X")
                 self.combo_style.setCurrentIndex(max(0, idx))
             if hasattr(self, 'combo_color') and self.combo_color:
                 color_index = cr.get('color_index', None)
                 if isinstance(color_index, int) and 0 <= color_index < self.combo_color.count():
                     self.combo_color.setCurrentIndex(color_index)
                 else:
-                    color_name = cr.get('color', 'Tráº¯ng')
+                    color_name = cr.get('color', 'Trắng')
                     idx = self.combo_color.findText(color_name)
                     self.combo_color.setCurrentIndex(idx if idx >= 0 else 10)
             ads_cross = cr.get('ads_mode', 'HOLD')
@@ -6625,8 +6674,8 @@ class MacroWindow(QMainWindow):
             if hasattr(self, 'btn_cross_bind') and self.btn_cross_bind:
                 self.btn_cross_bind.setText(cr.get('toggle_key', 'none').upper())
             if hasattr(self, 'crosshair') and self.crosshair:
-                self.crosshair.set_style(cr.get('style', '10: X-Shape'))
-                self.crosshair.set_color(cr.get('color', 'Tráº¯ng'))
+                self.crosshair.set_style(self.normalize_crosshair_style_value(cr.get('style', 'x')))
+                self.crosshair.set_color(cr.get('color', 'Trắng'))
                 self.crosshair.set_ads_mode(cr.get('ads_mode', 'HOLD'))
 
             for scope_key, _ in getattr(self, "scope_order", []):
@@ -6742,10 +6791,10 @@ class MacroWindow(QMainWindow):
 
 
             self.play_action_beep("reset")
-            self.show_bottom_action_status("ÄÃ£ Ä‘Æ°a cáº¥u hÃ¬nh vá» máº·c Ä‘á»‹nh.", tone="success")
+            self.show_bottom_action_status("Đã đưa cấu hình về mặc định.", tone="success")
         except Exception as e:
             print(f'[ERROR] reset_to_defaults failed: {e}')
-            self.show_bottom_action_status("Reset tháº¥t báº¡i.", tone="error", auto_hide_ms=3000)
+            self.show_bottom_action_status("Reset thất bại.", tone="error", auto_hide_ms=3000)
 
     def save_config(self):
         """Manually Save All Settings (Triggered by Button)"""
@@ -6826,7 +6875,7 @@ class MacroWindow(QMainWindow):
             selected_model = ""
             if hasattr(self, "combo_aim_model") and self.combo_aim_model and self.combo_aim_model.isEnabled():
                 selected_model = self.combo_aim_model.currentText().strip()
-                if selected_model == "KhÃ´ng cÃ³ model":
+                if selected_model == "Không có model":
                     selected_model = ""
             current_settings["aim"]["runtime"]["model"] = selected_model
             current_settings["aim"]["meta"]["last_loaded_model"] = selected_model or "N/A"
@@ -6941,11 +6990,11 @@ class MacroWindow(QMainWindow):
             self.signal_settings_changed.emit()
             
             self.play_action_beep("save")
-            self.show_bottom_action_status("ÄÃ£ lÆ°u cáº¥u hÃ¬nh thÃ nh cÃ´ng.", tone="success")
+            self.show_bottom_action_status("Đã lưu cấu hình thành công.", tone="success")
             
         except Exception as e:
             print(f"[ERROR] Save Config Failed: {e}")
-            self.show_bottom_action_status("Lá»—i lÆ°u cÃ i Ä‘áº·t.", tone="error", auto_hide_ms=3000)
+            self.show_bottom_action_status("Lỗi lưu cài đặt.", tone="error", auto_hide_ms=3000)
 
 
 
@@ -7027,14 +7076,14 @@ class MacroWindow(QMainWindow):
                 if hasattr(native_input_worker, "stop"):
                     native_input_worker.stop()
                 if hasattr(native_input_worker, "wait"):
-                    native_input_worker.wait(500)
+                    native_input_worker.wait(150)
             except Exception:
                 pass
 
         if getattr(self, "backend", None) is not None:
             try:
                 self.backend.stop()
-                self.backend.wait(500) # Reduce wait from 1500 to 500
+                self.backend.wait(150)
             except Exception:
                 pass
 
@@ -7053,12 +7102,12 @@ class MacroWindow(QMainWindow):
                 pass
 
     def update_ads_display(self, mode: str):
-        """M? t? ?? ???c l?m s?ch."""
+        """Hiển thị trạng thái hành động ở thanh dưới."""
         if hasattr(self, 'btn_adsmode') and self.btn_adsmode:
             self.btn_adsmode.setText(mode.upper())
         self.update_ads_status_style(mode.upper())
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
+        # Đã làm sạch chú thích lỗi mã hóa.
         if hasattr(self, 'crosshair') and self.crosshair:
             self.crosshair.set_ads_mode(mode.upper())
 
@@ -7107,7 +7156,7 @@ class MacroWindow(QMainWindow):
             self.tray_manager.show()
             self.tray_manager.tray_icon.showMessage(
                 "Macro Di88",
-                "á»¨ng dá»¥ng Ä‘Ã£ Ä‘Æ°á»£c Ä‘Æ°a xuá»‘ng khay há»‡ thá»‘ng.",
+                "Ứng dụng đã được đưa xuống khay hệ thống.",
                 QSystemTrayIcon.MessageIcon.Information,
                 2000
             )
@@ -7115,22 +7164,17 @@ class MacroWindow(QMainWindow):
     def handle_close_action(self):
         choice = AppNoticeDialog.custom_choice(
             self, 
-            "ÄÃ³ng á»©ng dá»¥ng", 
-            "Báº¡n muá»‘n Ä‘Æ°a app xuá»‘ng tray hay táº¯t háº³n?",
-            buttons=("Táº¯t", "Xuá»‘ng Tray", "Há»§y")
+            "Đóng ứng dụng", 
+            "Bạn muốn đưa app xuống tray hay tắt hẳn?",
+            buttons=("Tắt", "Xuống Tray", "Hủy")
         )
         
-        print(f"[DEBUG] handle_close_action: User chose -> {choice}")
-        
-        if choice == "Xuá»‘ng Tray":
-            # Delay hiding to ensure the dialog is fully closed first
-            QTimer.singleShot(100, self.hide_to_tray)
-        elif choice == "Táº¯t":
-            # Delay shutdown to ensure clean exit
-            QTimer.singleShot(100, self._perform_shutdown)
+        if choice == "Xuống Tray":
+            self.hide_to_tray()
+        elif choice == "Tắt":
+            self._perform_shutdown()
 
     def _perform_shutdown(self):
-        print("[DEBUG] Performing shutdown...")
         # Force terminate after 2 seconds if clean shutdown hangs
         QTimer.singleShot(2000, lambda: os._exit(0))
         
@@ -7180,7 +7224,7 @@ class MacroWindow(QMainWindow):
             runtime_source = str(aim_state.get("runtime_source", "") or "")
             native_error = str(aim_state.get("native_error", "") or "")
             if inference_backend.strip().lower() in {"not loaded", "booting", "idle"}:
-                inference_backend = "ChÆ°a náº¡p"
+                inference_backend = "Chưa nạp"
             fps_text = "FPS : --" if fps_raw in (None, "", "N/A") else f"FPS : {float(fps_raw):.1f}"
             inf_text = "INF : --" if inf_raw in (None, "", "N/A") else f"INF : {float(inf_raw):.1f} MS"
             self.update_aim_metric_style(self.lbl_aim_fps, fps_text, "#8dffb1")
@@ -7261,7 +7305,7 @@ class MacroWindow(QMainWindow):
         )
         
         # Map scope name to X1...X8 for Key lookup
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         def get_scope_display(s):
             s = str(s).lower()
             is_kh = "kh" in s
@@ -7381,17 +7425,17 @@ class MacroWindow(QMainWindow):
         stance = data["stance"]
         s_lower = str(stance).lower()
         
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
-        vn_stance = "Äá»©ng"
-        if "crouch" in s_lower: vn_stance = "Ngá»“i"
-        elif "prone" in s_lower: vn_stance = "Náº±m"
-        elif "stand" in s_lower: vn_stance = "Äá»©ng"
+        # Đã làm sạch chú thích lỗi mã hóa.
+        vn_stance = "Đứng"
+        if "crouch" in s_lower: vn_stance = "Ngồi"
+        elif "prone" in s_lower: vn_stance = "Nằm"
+        elif "stand" in s_lower: vn_stance = "Đứng"
         else: vn_stance = stance 
         
         # The user requested No color change on stance depending on slot or stance type, just a fixed color
         color = "#aaaaaa"
         
-        self.update_stance_status_style(f"TÆ¯ THáº¾ : {(vn_stance or 'Äá»¨NG').upper()}", color=color)
+        self.update_stance_status_style(f"TƯ THẾ : {(vn_stance or 'ĐỨNG').upper()}", color=color)
 
 
 
@@ -7399,21 +7443,21 @@ class MacroWindow(QMainWindow):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.dragPos = event.globalPosition().toPoint()
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             if hasattr(self, 'container'):
                  self.container.setGraphicsEffect(None)
             event.accept()
 
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton and hasattr(self, 'dragPos') and self.dragPos is not None:
-            # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+            # Đã làm sạch chú thích lỗi mã hóa.
             new_pos = self.pos() + event.globalPosition().toPoint() - self.dragPos
             self.move(new_pos)
             self.dragPos = event.globalPosition().toPoint()
             event.accept()
 
     def mouseReleaseEvent(self, event):
-        # ÄÃ£ lÃ m sáº¡ch chÃº thÃ­ch lá»—i mÃ£ hÃ³a.
+        # Đã làm sạch chú thích lỗi mã hóa.
         if hasattr(self, 'container'):
             from PyQt6.QtWidgets import QGraphicsDropShadowEffect
             shadow = QGraphicsDropShadowEffect()
